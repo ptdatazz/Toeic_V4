@@ -21,7 +21,7 @@ const playSound = (type) => {
   else if (type === "click") url = "https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3"; 
   else if (type === "combo_1") url = "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3"; 
   else if (type === "combo_2") url = "https://assets.mixkit.co/active_storage/sfx/2014/2014-preview.mp3"; 
-  else if (type === "combo_3") url = "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3"; 
+  else if (type === "combo_3") url = "https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3"; 
   else if (type === "combo_4") url = "https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3"; 
   else if (type === "combo_max") url = "https://assets.mixkit.co/active_storage/sfx/1434/1434-preview.mp3"; 
   
@@ -32,13 +32,13 @@ const playSound = (type) => {
   }
 };
 
-// --- HÀM ĐỌC TỪ VỰNG (TEXT-TO-SPEECH) ---
-const speakWord = (rawText) => {
+// --- HÀM ĐỌC TỪ VỰNG & CÂU HỎI (HỖ TRỢ SONG NGỮ) ---
+const speakWord = (rawText, lang = 'en-US') => {
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel(); 
     const cleanText = rawText.replace(/\s*\(.*?\)\s*/g, '').trim();
     const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = 'en-US'; 
+    utterance.lang = lang; // Tự động đổi giọng theo ngôn ngữ
     utterance.rate = 0.85;    
     window.speechSynthesis.speak(utterance);
   } else {
@@ -191,7 +191,7 @@ function AuthScreen() {
 }
 
 // --- COMPONENT: CÀI ĐẶT CHUNG TẤT CẢ CÁC MODE ---
-function QuizSettings({ mode, onStart, onBack }) {
+function QuizSettings({ mode, onStart, onBack, customWordsCount = 0 }) {
   const modeName = mode === "vocab" ? "Từ Vựng" : mode === "collocation" ? "Collocation" : "Ngữ Pháp (AI)";
   const storageKey = `toeic_${mode}_settings`;
   const primaryColor = mode === "vocab" ? "#4CAF50" : mode === "collocation" ? "#9C27B0" : "#2196F3";
@@ -200,10 +200,29 @@ function QuizSettings({ mode, onStart, onBack }) {
     const saved = localStorage.getItem(storageKey);
     if (saved) {
         const parsedSettings = JSON.parse(saved);
-        return { ...parsedSettings, difficultyLevel: 1, toeicPart: parsedSettings.toeicPart || "part5" }; 
+        // THÊM: dataSource
+        return { ...parsedSettings, difficultyLevel: 1, toeicPart: parsedSettings.toeicPart || "part5", dataSource: parsedSettings.dataSource || "default" }; 
     }
-    return { quizLimit: mode === "grammar" ? 5 : 30, timePerQuestion: mode === "grammar" ? 30 : 10, requiredStreak: 3, difficultyLevel: 1, survivalLives: 3, timeAttackSeconds: mode === "grammar" ? 60 : 30, toeicPart: "part5" };
+    // THÊM: dataSource: "default"
+    return { quizLimit: mode === "grammar" ? 5 : 30, timePerQuestion: mode === "grammar" ? 30 : 10, requiredStreak: 3, difficultyLevel: 1, survivalLives: 3, timeAttackSeconds: mode === "grammar" ? 60 : 30, toeicPart: "part5", dataSource: "default" };
   });
+
+  // THÊM: Tính toán min/max tự động cho thanh kéo
+  let dynamicMin = mode === "grammar" ? 1 : 5;
+  let dynamicMax = mode === "grammar" ? 20 : 100;
+  
+  if (mode === "vocab" && settings.dataSource === "custom") {
+      // Lấy chính xác số lượng từ ở sheet Custom làm Min
+      dynamicMin = customWordsCount > 0 ? customWordsCount : 5;
+      if (dynamicMax < dynamicMin) dynamicMax = dynamicMin + 20; 
+  }
+
+  // Tự động đẩy giới hạn lên nếu thanh kéo đang nằm ở mức thấp hơn số từ mới
+  useEffect(() => {
+      if (settings.difficultyLevel <= 2 && settings.quizLimit < dynamicMin) {
+          setSettings(prev => ({ ...prev, quizLimit: dynamicMin }));
+      }
+  }, [dynamicMin, settings.difficultyLevel, settings.quizLimit]);
 
   const handleStart = () => {
     playSound("click");
@@ -222,6 +241,25 @@ function QuizSettings({ mode, onStart, onBack }) {
 
       <div style={{ backgroundColor: "#f9f9f9", padding: "20px", borderRadius: "12px", border: "1px solid #eee", textAlign: "left", marginBottom: "25px" }}>
         
+        {/* LỰA CHỌN NGUỒN DỮ LIỆU (CHỈ DÀNH CHO TỪ VỰNG) */}
+        {mode === "vocab" && (
+          <div style={{ marginBottom: "25px", backgroundColor: "#e8f5e9", padding: "15px", borderRadius: "8px", border: "1px solid #c8e6c9" }}>
+            <label style={{ fontWeight: "bold", color: "#2e7d32", display: "block", marginBottom: "12px", fontSize: "16px" }}>
+              📂 Chọn nguồn dữ liệu:
+            </label>
+            <div style={{ display: "flex", gap: "10px", flexDirection: "column" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "15px", color: "#333" }}>
+                <input type="radio" name="dataSource" value="default" checked={settings.dataSource === "default"} onChange={(e) => setSettings({...settings, dataSource: e.target.value})} style={{ transform: "scale(1.2)" }} />
+                <strong>Default:</strong> Trộn ngẫu nhiên (80% mới, 20% cũ)
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "15px", color: "#333" }}>
+                <input type="radio" name="dataSource" value="custom" checked={settings.dataSource === "custom"} onChange={(e) => setSettings({...settings, dataSource: e.target.value})} style={{ transform: "scale(1.2)" }} />
+                <strong>Custom:</strong> Bắt buộc học hết từ mới trước
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* LỰA CHỌN PART TOEIC (CHỈ DÀNH CHO NGỮ PHÁP) */}
         {mode === "grammar" && (
           <div style={{ marginBottom: "25px", backgroundColor: "#e3f2fd", padding: "15px", borderRadius: "8px", border: "1px solid #bbdefb" }}>
@@ -279,8 +317,21 @@ function QuizSettings({ mode, onStart, onBack }) {
         {settings.difficultyLevel <= 2 && (
           <>
             <div style={{ marginBottom: "20px" }}>
-              <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px" }}>📚 Số câu mỗi lượt: <span style={{ color: primaryColor }}>{settings.quizLimit}</span></label>
-              <input type="range" min={mode==="grammar" ? 1 : 5} max={mode==="grammar" ? 20 : 100} step={mode==="grammar" ? 1 : 5} value={settings.quizLimit} onChange={(e) => setSettings({...settings, quizLimit: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer" }} />
+              <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px" }}>
+                📚 Số câu mỗi lượt: <span style={{ color: primaryColor }}>{settings.quizLimit}</span>
+                {mode === "vocab" && settings.dataSource === "custom" && customWordsCount > 0 && (
+                   <span style={{ fontSize: "12px", color: "#F44336", marginLeft: "10px", backgroundColor: "#ffebee", padding: "2px 6px", borderRadius: "4px" }}>(Min: {customWordsCount} từ ở sheet Custom)</span>
+                )}
+              </label>
+              <input 
+                type="range" 
+                min={dynamicMin} 
+                max={dynamicMax} 
+                step={mode==="grammar" ? 1 : (mode==="vocab" && settings.dataSource==="custom" ? 1 : 5)} 
+                value={settings.quizLimit} 
+                onChange={(e) => setSettings({...settings, quizLimit: parseInt(e.target.value)})} 
+                style={{ width: "100%", cursor: "pointer" }} 
+              />
             </div>
 
             <div style={{ marginBottom: "20px" }}>
@@ -308,7 +359,7 @@ function QuizSettings({ mode, onStart, onBack }) {
 }
 
 // --- COMPONENT: ÔN TẬP TỪ VỰNG / COLLOCATION CHÍNH ---
-function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords }) {
+function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicPlaying }) {
   const DIFFICULTY_LEVEL = settings.difficultyLevel;
   const QUIZ_LIMIT = DIFFICULTY_LEVEL >= 3 ? 999 : settings.quizLimit; 
   const TIME_PER_QUESTION = settings.timePerQuestion;
@@ -325,15 +376,24 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords }) {
   const [globalTime, setGlobalTime] = useState(DIFFICULTY_LEVEL === 4 ? settings.timeAttackSeconds : null);
 
   const typingInputRef = useRef(null); 
+  const bossInputRefs = useRef([]);
   const [typingValue, setTypingValue] = useState("");
   const [scrambleAvailable, setScrambleAvailable] = useState([]);
   const [scrambleSelected, setScrambleSelected] = useState([]);
+  // THÊM: State lưu trữ đáp án cho câu hỏi Crossword Boss
+  const [crosswordInputs, setCrosswordInputs] = useState({});
 
   useEffect(() => {
     const fetchVocabFromSheets = async () => {
       try {
         const SHEET_ID = "1nAdOxZBZ3-Bawh3Ks54KaIYLPgGZfTuchebwbCYW8dU";
-        const SHEET_NAME = mode === "vocab" ? "Vocab" : "Collocation"; 
+        
+        // KIỂM TRA NGUỒN DATA ĐỂ CHỌN SHEET
+        let SHEET_NAME = mode === "vocab" ? "Vocab" : "Collocation"; 
+        if (mode === "vocab" && settings.dataSource === "custom") {
+            SHEET_NAME = "Custom"; // Bắt buộc lấy từ sheet Custom theo yêu cầu
+        }
+
         const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=1&sheet=${SHEET_NAME}`;
         const response = await fetch(url);
         const text = await response.text();
@@ -348,17 +408,13 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords }) {
           return obj;
         });
 
-        // THUẬT TOÁN SPACED REPETITION
         const learnedSet = new Set(learnedWords || []);
         const newWords = [];
         const oldWords = [];
 
         fullData.forEach(item => {
-           if (learnedSet.has(item.word)) {
-               oldWords.push(item);
-           } else {
-               newWords.push(item);
-           }
+           if (learnedSet.has(item.word)) oldWords.push(item);
+           else newWords.push(item);
         });
 
         const shuffledNew = shuffleArray(newWords);
@@ -367,28 +423,126 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords }) {
         let finalPool = [];
 
         if (DIFFICULTY_LEVEL >= 3) {
-            finalPool = [...shuffledNew, ...shuffledOld, ...shuffledNew, ...shuffledOld, ...fullData];
-            finalPool = finalPool.slice(0, QUIZ_LIMIT);
+            finalPool = [...shuffledNew, ...shuffledOld, ...shuffledNew, ...shuffledOld, ...fullData].slice(0, QUIZ_LIMIT);
         } else {
-            const NEW_PERCENT = 0.8;
-            let targetNewCount = Math.floor(QUIZ_LIMIT * NEW_PERCENT);
-            let targetOldCount = QUIZ_LIMIT - targetNewCount;
+            // THUẬT TOÁN CUSTOM VS DEFAULT
+            if (mode === "vocab" && settings.dataSource === "custom") {
+                // Chế độ Custom: Tối đa từ mới có thể, thiếu mới lấy cũ đắp vào.
+                // Đặc biệt KHÔNG XÀO TRỘN mảng finalPool, để từ mới auto nằm trên cùng.
+                const targetNewCount = Math.min(shuffledNew.length, QUIZ_LIMIT);
+                const targetOldCount = QUIZ_LIMIT - targetNewCount;
+                
+                const pickNew = shuffledNew.slice(0, targetNewCount);
+                const pickOld = shuffledOld.slice(0, targetOldCount);
+                
+                finalPool = [...pickNew, ...pickOld]; 
+            } else {
+                // Chế độ Default: Vẫn giữ 80 mới / 20 cũ và trộn ngẫu nhiên
+                const NEW_PERCENT = 0.8;
+                let targetNewCount = Math.floor(QUIZ_LIMIT * NEW_PERCENT);
+                let targetOldCount = QUIZ_LIMIT - targetNewCount;
 
-            if (shuffledNew.length < targetNewCount) {
-                targetNewCount = shuffledNew.length;
-                targetOldCount = QUIZ_LIMIT - targetNewCount;
-            } else if (shuffledOld.length < targetOldCount) {
-                targetOldCount = shuffledOld.length;
-                targetNewCount = QUIZ_LIMIT - targetOldCount;
+                if (shuffledNew.length < targetNewCount) {
+                    targetNewCount = shuffledNew.length;
+                    targetOldCount = QUIZ_LIMIT - targetNewCount;
+                } else if (shuffledOld.length < targetOldCount) {
+                    targetOldCount = shuffledOld.length;
+                    targetNewCount = QUIZ_LIMIT - targetOldCount;
+                }
+
+                const pickNew = shuffledNew.slice(0, targetNewCount);
+                const pickOld = shuffledOld.slice(0, targetOldCount);
+                finalPool = shuffleArray([...pickNew, ...pickOld]);
             }
-
-            const pickNew = shuffledNew.slice(0, targetNewCount);
-            const pickOld = shuffledOld.slice(0, targetOldCount);
-
-            finalPool = shuffleArray([...pickNew, ...pickOld]);
         }
+        let generatedQs = generateVocabQuestions(finalPool, fullData, DIFFICULTY_LEVEL);
+        
+        // ... (phần generate generatedQs từ selectedData giữ nguyên
+      // === PHẦN TẠO BOSS MỚI TÍCH HỢP AI & XOAY MAP ===
+      if (mode === "vocab" && generatedQs.length >= 3) {
+          const availableWords = generatedQs.map(q => q); 
+          const wordListStr = availableWords.map(w => w.word).join(", ");
+          let aiKeyword = "";
 
-        setQuestionsData(generateVocabQuestions(finalPool, fullData, DIFFICULTY_LEVEL));
+          // TÍNH TOÁN ĐỘ DÀI RANDOM TỪ 3 - 10 KÝ TỰ (Không vượt quá số từ đang học)
+          const maxPossibleLen = Math.min(availableWords.length, 10);
+          const targetRandomLen = Math.floor(Math.random() * (maxPossibleLen - 3 + 1)) + 3;
+
+          // 1. GỌI AI ĐỂ SINH TỪ KHÓA DỰA TRÊN TỪ VỰNG VỪA HỌC
+          try {
+              const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+              if (API_KEY && !API_KEY.includes("DÁN_MÃ")) {
+                  console.log(`[BOSS] Đang nhờ AI suy nghĩ từ khóa dài đúng ${targetRandomLen} ký tự...`);
+                  
+                  // Ép AI đẻ ra từ khóa có độ dài chính xác bằng targetRandomLen
+                  const prompt = `Tôi vừa học các từ vựng tiếng Anh sau: ${wordListStr}. Hãy nghĩ ra 1 từ khóa tiếng Anh bí mật (CÓ ĐÚNG ${targetRandomLen} CHỮ CÁI). Từ khóa này nên liên quan đến chủ đề chung của các từ trên, hoặc mang ý nghĩa cổ vũ (như WIN, TOP, BEST, FOCUS, MASTER). CHỈ TRẢ VỀ DUY NHẤT 1 TỪ ĐÓ, viết hoa, không giải thích gì thêm.`;
+                  
+                  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
+                      method: "POST", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                  });
+                  const data = await res.json();
+                  if (data.candidates && data.candidates.length > 0) {
+                      aiKeyword = data.candidates[0].content.parts[0].text.trim().toUpperCase().replace(/[^A-Z]/g, '');
+                      console.log("[BOSS] AI chọn từ khóa:", aiKeyword);
+                  }
+              }
+          } catch (e) { console.log("[BOSS] AI đang bận, dùng từ khóa dự phòng."); }
+
+          // 2. TẠO MẠNG LƯỚI CROSSWORD TỪ TỪ KHÓA
+          const fallbacks = ["WIN", "TOP", "PRO", "YES", "BEST", "GOOD", "FAST", "LEAD", "SMART", "GREAT", "FOCUS", "SUPER", "EXPERT", "MASTER", "WINNER", "GENIUS", "SUCCESS", "CHAMPION", "BRILLIANT"];
+          
+          // Lọc bỏ những từ dự phòng dài hơn số lượng từ vựng bạn đang học
+          let validFallbacks = fallbacks.filter(w => w.length <= maxPossibleLen);
+          
+          // FIX LỖI LUÔN LÀ 3 KÝ TỰ: 
+          // Trộn ngẫu nhiên trước, sau đó ép các từ có độ dài GẦN BẰNG con số random lên đầu danh sách để thử trước!
+          validFallbacks = shuffleArray(validFallbacks); 
+          validFallbacks.sort((a, b) => Math.abs(a.length - targetRandomLen) - Math.abs(b.length - targetRandomLen));
+          
+          let keywordsToTry = (aiKeyword && aiKeyword.length <= maxPossibleLen && aiKeyword.length >= 3) ? [aiKeyword, ...validFallbacks] : validFallbacks;
+
+          let bossWords = [];
+          let valid = false;
+          let finalKeyword = "";
+
+          for (let targetKeyword of keywordsToTry) {
+              for (let attempt = 0; attempt < 20; attempt++) {
+                  bossWords = [];
+                  valid = true;
+                  for (let i = 0; i < targetKeyword.length; i++) {
+                      const char = targetKeyword[i].toLowerCase();
+                      let candidates = availableWords.filter(item => item.word && item.word.toLowerCase().includes(char));
+                      if (candidates.length === 0) { valid = false; break; }
+                      
+                      let picked = shuffleArray(candidates).find(c => !bossWords.some(bw => bw.word === c.word));
+                      if (!picked) { valid = false; break; }
+                      
+                      let charIndex = picked.word.toLowerCase().indexOf(char);
+                      bossWords.push({ ...picked, alignIdx: charIndex });
+                  }
+                  if (valid && bossWords.length === targetKeyword.length) break;
+              }
+              if (valid) { finalKeyword = targetKeyword; break; }
+          }
+
+          if (valid) {
+              // 3. CHỌN NGẪU NHIÊN BẢN ĐỒ DỌC HOẶC NGANG
+              const isVerticalMap = Math.random() > 0.5;
+
+              generatedQs[generatedQs.length - 1] = {
+                  type: "crossword_boss",
+                  words: bossWords,
+                  keyword: finalKeyword,
+                  isVerticalKeyword: isVerticalMap, // Lưu trạng thái xoay Map
+                  question: "Thử thách cuối cùng - Ghép từ bạn vừa học!",
+                  answer: "WIN"
+              };
+              console.log(`[BOSS] Chốt Boss! Từ khóa: ${finalKeyword} | Chiều: ${isVerticalMap ? "Dọc" : "Ngang"}`);
+          }
+      }
+
+      setQuestionsData(generatedQs);
       } catch (error) {
         console.error(`Lỗi đồng bộ ${mode}:`, error);
       } finally {
@@ -407,28 +561,43 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords }) {
   useEffect(() => {
     if (!loadingData && current < questionsData.length && selected === null && !isGameOver) {
         const currentQ = questionsData[current];
+        
+        // Câu nói chung cho các câu hỏi bằng tiếng Việt (Hỏi từ tiếng Anh tương ứng là gì)
+        const defaultEnglishPrompt = "How do you say this in English?";
+        
         if (currentQ.type === "typing") {
             typingInputRef.current?.focus();
+            speakWord(defaultEnglishPrompt, 'en-US');
+            
         } else if (currentQ.type === "scramble") {
             const letters = currentQ.answer.split('').map((char, index) => ({ id: index, char }));
             setScrambleAvailable(shuffleArray(letters));
             setScrambleSelected([]);
+            speakWord(defaultEnglishPrompt, 'en-US');
+            
         } else if (currentQ.type === "listening") {
-            speakWord(currentQ.word);
+            speakWord(currentQ.word, 'en-US'); 
+            
+        } else if (currentQ.type === "en_to_vn") {
+            speakWord(`What does ${currentQ.word} mean?`, 'en-US'); 
+            
+        } else if (currentQ.type === "vn_to_en") {
+            speakWord(defaultEnglishPrompt, 'en-US');
         }
     }
   }, [current, loadingData, questionsData, selected, isGameOver]);
 
   useEffect(() => {
     if (selected !== null || loadingData || isGameOver || DIFFICULTY_LEVEL === 4) return;
-    if (timeLeft <= 0) {
-        handleAnswer(null);
-        return;
-    }
+    
+    // ĐÓNG BĂNG THỜI GIAN KHI GẶP TRÙM CUỐI
+    if (questionsData[current]?.type === "crossword_boss") return;
+
+    if (timeLeft <= 0) { handleAnswer(null); return; }
     const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     return () => clearInterval(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLeft, selected, loadingData, isGameOver, DIFFICULTY_LEVEL]);
+  }, [timeLeft, selected, loadingData, isGameOver, DIFFICULTY_LEVEL, current, questionsData]);
 
   useEffect(() => {
     if (DIFFICULTY_LEVEL !== 4 || isGameOver || loadingData) return;
@@ -464,6 +633,24 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords }) {
       return () => clearInterval(interval);
     }
   }, [isGameOver, current, questionsData.length, DIFFICULTY_LEVEL]);
+
+  // --- ĐẠO DIỄN ÂM NHẠC: CHỈ BẬT NHẠC Ở MÀN TRÙM CUỐI ---
+  useEffect(() => {
+    if (loadingData || questionsData.length === 0) return;
+
+    const currentQ = questionsData[current];
+    
+    // Nếu đang ở câu Boss, game chưa kết thúc và người dùng đang bật nhạc -> Nổi nhạc lên!
+    if (currentQ?.type === "crossword_boss" && !isGameOver && isMusicPlaying) {
+        globalBgm.play().catch(e => console.log("Lỗi phát nhạc Boss:", e));
+    } else {
+        // Tắt nhạc khi ở các câu thường, hoặc khi đã qua màn
+        globalBgm.pause();
+    }
+
+    // Đảm bảo tắt nhạc nếu người dùng bấm nút "Thoát" giữa chừng
+    return () => globalBgm.pause();
+  }, [current, questionsData, isGameOver, loadingData, isMusicPlaying]);
 
   const encourages = ["Không sao, thử lại nhé! 💪", "Cẩn thận xíu nào! 🌱", "Gần đúng rồi! 😅"];
 
@@ -512,6 +699,12 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords }) {
       const newStreak = streak + 1;
       setScore(score + 1);
       setStreak(newStreak); 
+
+      if (currentQ.type === "crossword_boss") {
+          playSound("finish");
+          setIsGameOver(true);
+          return; // Dừng hàm lại đây, không hiện thêm bảng Feedback bên dưới nữa!
+      }
       
       const msg = handleComboRewards(newStreak);
       setAnswerStatus({ type: "correct", streak: newStreak, text: msg });
@@ -529,36 +722,49 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords }) {
           setAnswerStatus({ type: "wrong", streak: 0, text: "❌ Sai rồi! Bị trừ 5 giây!" });
       } else {
           setAnswerStatus({ type: "wrong", streak: 0, text: isTimeout ? "⏰ Hết giờ mất rồi!" : encourages[Math.floor(Math.random() * encourages.length)] });
-          
           setQuestionsData((prev) => {
             const newData = [...prev];
+            
+            // Tìm vị trí boss hiện tại (nếu có)
+            const bossIndex = newData.findIndex(q => q.type === "crossword_boss");
+            
+            let insertIndex = newData.length;
             const remaining = newData.length - current - 1;
-            let insertIndex = newData.length; 
-            if (remaining > 5) insertIndex = current + 3 + Math.floor(Math.random() * (remaining - 2));
-            
-            let penaltyItem = {...newData[current]};
-            
-            if (penaltyItem.type === "en_to_vn") {
-               penaltyItem.type = "vn_to_en";
-            } else if (penaltyItem.type === "vn_to_en" || penaltyItem.type === "listening") {
-               penaltyItem.type = "en_to_vn";
-            } else { 
-               penaltyItem.type = Math.random() > 0.5 ? "en_to_vn" : "vn_to_en";
+            if (remaining > 5) {
+                insertIndex = current + 3 + Math.floor(Math.random() * (remaining - 2));
             }
 
+            // ÉP chèn trước boss nếu boss tồn tại
+            if (bossIndex !== -1) {
+                insertIndex = Math.min(insertIndex, bossIndex);
+                console.log(`Chèn phạt tại vị trí ${insertIndex} (trước boss tại ${bossIndex})`);
+            }
+
+            let penaltyItem = { ...newData[current] };
+            
+            if (penaltyItem.type === "en_to_vn") penaltyItem.type = "vn_to_en";
+            else if (penaltyItem.type === "vn_to_en" || penaltyItem.type === "listening") penaltyItem.type = "en_to_vn";
+            else penaltyItem.type = Math.random() > 0.5 ? "en_to_vn" : "vn_to_en"; // Scramble/Typing đổi sang trắc nghiệm
+
+            // Sinh lại đáp án (options) và kết quả (answer) cho phù hợp với cách chơi mới
             if (penaltyItem.type === "en_to_vn") {
                penaltyItem.answer = penaltyItem.meaning;
-               const wrongOptions = getRandomWrongOptions(newData, penaltyItem, "meaning");
+               const wrongOptions = getRandomWrongOptions(fullData, penaltyItem, "meaning");
                penaltyItem.options = shuffleArray([...wrongOptions, penaltyItem.meaning]);
             } else if (penaltyItem.type === "vn_to_en") {
                penaltyItem.answer = penaltyItem.word;
-               const wrongOptions = getRandomWrongOptions(newData, penaltyItem, "word");
+               const wrongOptions = getRandomWrongOptions(fullData, penaltyItem, "word");
                penaltyItem.options = shuffleArray([...wrongOptions, penaltyItem.word]);
             }
-            
+
             newData.splice(insertIndex, 0, penaltyItem);
+            
+            // Debug cuối cùng: in ra vị trí boss sau khi chèn
+            const newBossIndex = newData.findIndex(q => q.type === "crossword_boss");
+            console.log(`Sau khi chèn phạt → boss vẫn ở vị trí: ${newBossIndex}/${newData.length-1}`);
+            
             return newData;
-          });
+        });
       }
     }
   };
@@ -592,6 +798,7 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords }) {
     setSelected(null);
     setAnswerStatus(null); 
     setTypingValue(""); 
+    setCrosswordInputs({});
     const nextIdx = current + 1;
     setCurrent(nextIdx);
     setTimeLeft(TIME_PER_QUESTION); 
@@ -668,8 +875,9 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords }) {
               🔊
             </button>
           )}
+          {/* PHỤC HỒI ĐỒNG HỒ */}
           <span style={{ fontWeight: "bold", color: (DIFFICULTY_LEVEL===4 ? globalTime : timeLeft) <= 5 ? "#f44336" : "#333", fontSize: "15px", minWidth: "35px", textAlign: "center", whiteSpace: "nowrap", flexShrink: 0 }}>
-            ⏱️ {DIFFICULTY_LEVEL === 4 ? globalTime : timeLeft}s
+            {currentQ.type === "crossword_boss" ? "⏳ Vô cực" : `⏱️ ${DIFFICULTY_LEVEL === 4 ? globalTime : timeLeft}s`}
           </span>
         </div>
 
@@ -687,11 +895,134 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords }) {
 
       </div>
 
-      {DIFFICULTY_LEVEL < 4 && <div style={{ width: "100%", height: "8px", backgroundColor: "#e0e0e0", borderRadius: "4px", overflow: "hidden", marginBottom: "20px" }}>
+      {DIFFICULTY_LEVEL < 4 && currentQ.type !== "crossword_boss" && <div style={{ width: "100%", height: "8px", backgroundColor: "#e0e0e0", borderRadius: "4px", overflow: "hidden", marginBottom: "20px" }}>
         <div style={{ height: "100%", width: `${timePercentage}%`, backgroundColor: timeLeft <= 3 ? "#f44336" : "#4caf50", transition: "width 1s linear" }} />
       </div>}
 
       {/* --- CÁC KIỂU CÂU HỎI --- */}
+
+      {/* GIAO DIỆN BẢN ĐỒ CROSSWORD CÓ TỪ KHÓA ẨN */}
+      {currentQ.type === "crossword_boss" && (
+        <div style={{ textAlign: "left", animation: "popIn 0.5s ease-out" }}>
+          <h2 style={{ fontSize: "22px", color: "#2c3e50", textAlign: "center", textTransform: "uppercase" }}>🧩 Vượt Ải Ô Chữ</h2>
+          <p style={{ color: "#F44336", textAlign: "center", marginBottom: "20px", fontWeight: "bold", fontSize: "14px" }}>Không tính thời gian. Điền từ để tìm TỪ KHÓA BÍ ẨN dọc màu cam!</p>
+
+          {/* VẼ BẢN ĐỒ MAP CROSSWORD */}
+          {/* VẼ BẢN ĐỒ MAP CROSSWORD TỰ ĐỘNG XOAY CHIỀU */}
+          <div style={{ 
+              display: "flex", 
+              flexDirection: currentQ.isVerticalKeyword ? "column" : "row", 
+              gap: "6px", 
+              justifyContent: "center", 
+              alignItems: "center", 
+              marginBottom: "30px", 
+              padding: "20px", 
+              backgroundColor: "#f0f8ff", 
+              borderRadius: "12px", 
+              overflowX: "auto" 
+          }}>
+             {currentQ.words.map((item, idx) => {
+                 const userInput = (crosswordInputs[idx] || "").toLowerCase();
+                 const maxShift = Math.max(...currentQ.words.map(w => w.alignIdx));
+                 const marginBoxes = maxShift - item.alignIdx; 
+                 const isCorrectWord = userInput.trim() === item.word.toLowerCase().trim();
+
+                 return (
+                     <div key={`grid-${idx}`} style={{ 
+                         display: 'flex', 
+                         flexDirection: currentQ.isVerticalKeyword ? "row" : "column",
+                         marginLeft: currentQ.isVerticalKeyword ? `${marginBoxes * 32}px` : "0",
+                         marginTop: !currentQ.isVerticalKeyword ? `${marginBoxes * 32}px` : "0",
+                         alignSelf: "flex-start" 
+                     }}>
+                         {item.word.split('').map((char, charIdx) => {
+                             const isKeywordChar = charIdx === item.alignIdx; 
+                             const userChar = userInput[charIdx] || "";
+                             
+                             return (
+                                 <div key={`cell-${idx}-${charIdx}`} style={{
+                                     width: '28px', height: '28px', 
+                                     margin: currentQ.isVerticalKeyword ? "0 2px" : "2px 0",
+                                     border: isCorrectWord ? '2px solid #4CAF50' : (isKeywordChar ? '2px solid #FF9800' : '1px solid #ccc'),
+                                     backgroundColor: isKeywordChar ? '#ffe0b2' : (isCorrectWord ? '#e8f5e9' : '#fff'),
+                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                     fontWeight: 'bold', textTransform: 'uppercase', fontSize: '15px', color: isKeywordChar ? "#e65100" : "#333",
+                                     boxShadow: isKeywordChar ? "0 0 8px rgba(255, 152, 0, 0.6)" : "none",
+                                     zIndex: isKeywordChar ? 2 : 1
+                                 }}>
+                                     {userChar}
+                                 </div>
+                             )
+                         })}
+                     </div>
+                 )
+             })}
+          </div>
+
+          {/* KHUNG NHẬP LIỆU CÂU HỎI */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+             {currentQ.words.map((item, idx) => {
+                 const isCorrect = (crosswordInputs[idx] || "").toLowerCase().trim() === item.word.toLowerCase().trim();
+                 return (
+                     <div key={`input-${idx}`} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px", backgroundColor: isCorrect ? "#e8f5e9" : "#fff", borderRadius: "8px", border: "1px solid #ddd" }}>
+                         <div style={{ width: "30px", height: "30px", borderRadius: "50%", backgroundColor: "#2196F3", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" }}>{idx + 1}</div>
+                         <div style={{ flex: 1 }}>
+                             <div style={{ fontSize: "13px", fontWeight: "bold", color: "#555", marginBottom: "4px" }}>{item.meaning}</div>
+                             <input
+                                 ref={(el) => bossInputRefs.current[idx] = el} // Gắn định vị cho ô nhập
+                                 type="text"
+                                 value={crosswordInputs[idx] || ""}
+                                 onChange={(e) => {
+                                     const val = e.target.value.replace(/[^a-zA-Z\s-]/g, '');
+                                     setCrosswordInputs({...crosswordInputs, [idx]: val});
+                                     
+                                     // CƠ CHẾ AUTO-FOCUS: Gõ đúng tự nhảy sang ô chưa hoàn thành
+                                     if (val.toLowerCase().trim() === item.word.toLowerCase().trim()) {
+                                         let nextIdx = -1;
+                                         // Tìm ô trống ở phía dưới
+                                         for (let i = idx + 1; i < currentQ.words.length; i++) {
+                                             const targetWord = currentQ.words[i].word.toLowerCase().trim();
+                                             const curVal = (crosswordInputs[i] || "").toLowerCase().trim();
+                                             if (curVal !== targetWord) { nextIdx = i; break; }
+                                         }
+                                         // Nếu bên dưới hết ô trống, vòng lên tìm lại phía trên
+                                         if (nextIdx === -1) {
+                                             for (let i = 0; i < idx; i++) {
+                                                 const targetWord = currentQ.words[i].word.toLowerCase().trim();
+                                                 const curVal = (crosswordInputs[i] || "").toLowerCase().trim();
+                                                 if (curVal !== targetWord) { nextIdx = i; break; }
+                                             }
+                                         }
+                                         // Di chuyển con trỏ chuột sang ô tiếp theo
+                                         if (nextIdx !== -1 && bossInputRefs.current[nextIdx]) {
+                                             setTimeout(() => bossInputRefs.current[nextIdx].focus(), 50);
+                                         }
+                                     }
+                                 }}
+                                 disabled={isCorrect}
+                                 maxLength={item.word.length}
+                                 placeholder={`${item.word.length} chữ cái...`}
+                                 style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #ccc", textTransform: "uppercase", outline: "none", backgroundColor: isCorrect ? "#c8e6c9" : "#fff", fontWeight: "bold" }}
+                             />
+                         </div>
+                         {isCorrect && <span style={{ fontSize: "20px" }}>✅</span>}
+                     </div>
+                 )
+             })}
+          </div>
+
+          {/* HIỆU ỨNG TỪ KHÓA KHI HOÀN THÀNH */}
+          {currentQ.words.every((item, idx) => (crosswordInputs[idx] || "").toLowerCase().trim() === item.word.toLowerCase().trim()) ? (
+             <div style={{ marginTop: "25px", textAlign: "center", animation: "popIn 0.5s" }}>
+                 <h3 style={{ color: "#FF9800", marginBottom: "15px" }}>Từ khóa bí mật là: <br/><span style={{ fontSize: "32px", color: "#e65100", letterSpacing: "5px" }}>{currentQ.keyword}</span></h3>
+                 <button onClick={() => handleAnswer("WIN")} style={{ width: "100%", padding: "15px", fontSize: "18px", backgroundColor: "#4CAF50", color: "white", borderRadius: "8px", border: "none", fontWeight: "bold", cursor: "pointer", boxShadow: "0 4px 6px rgba(0,0,0,0.1)" }}>🎉 Tuyệt vời! Hoàn thành 🎉</button>
+             </div>
+          ) : (
+             <button disabled style={{ width: "100%", padding: "15px", marginTop: "25px", fontSize: "18px", backgroundColor: "#ccc", color: "#666", borderRadius: "8px", border: "none", fontWeight: "bold", cursor: "not-allowed" }}>🔒 Giải mã để mở khóa</button>
+          )}
+        </div>
+      )}
+
       {currentQ.type === "en_to_vn" && (
         <>
           <h2 style={{ fontSize: "22px", color: "#2c3e50" }}>What does <span style={{color: mode==="collocation"?"#9C27B0":"#2196F3"}}>"{currentQ.word}"</span> mean?</h2>
@@ -953,11 +1284,15 @@ function GrammarQuiz({ onBack, updateGlobal, settings, learnedQuestions }) {
 
   useEffect(() => {
     if (selected !== null || loadingData || isGameOver || DIFFICULTY_LEVEL === 4) return;
+    
+    // THÊM: Dừng đếm ngược nếu là câu hỏi trùm cuối
+    if (questionsData[current]?.type === "crossword_boss") return;
+
     if (timeLeft <= 0) { handleAnswer(null); return; }
     const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     return () => clearInterval(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLeft, selected, loadingData, isGameOver, DIFFICULTY_LEVEL]);
+  }, [timeLeft, selected, loadingData, isGameOver, DIFFICULTY_LEVEL, current, questionsData]);
 
   useEffect(() => {
     if (DIFFICULTY_LEVEL !== 4 || isGameOver || loadingData) return;
@@ -1239,6 +1574,9 @@ function App() {
   const [totalDbWords, setTotalDbWords] = useState(() => parseInt(localStorage.getItem("toeic_total_db_words")) || 0);
   const [totalCollocDbWords, setTotalCollocDbWords] = useState(() => parseInt(localStorage.getItem("toeic_total_colloc_db_words")) || 0);
 
+  // STATE ĐỂ LƯU DANH SÁCH TỪ CỦA SHEET CUSTOM (ĐỂ LỌC TỪ MỚI)
+  const [customSheetWords, setCustomSheetWords] = useState(() => JSON.parse(localStorage.getItem("toeic_custom_words")) || []);
+
   const [showTutorial, setShowTutorial] = useState(false);
   const [isMusicPlaying, setIsMusicPlaying] = useState(true); 
   const [currentTrackIndex, setCurrentTrackIndex] = useState(Math.floor(Math.random() * BGM_PLAYLIST.length));
@@ -1351,6 +1689,20 @@ function App() {
         setTotalCollocDbWords(collocRows);
         localStorage.setItem("toeic_total_colloc_db_words", collocRows);
 
+        try {
+            const customData = await fetchSheetData("Custom");
+            const headers = customData.table.cols.map(col => col.label);
+            const wordColIdx = headers.findIndex(h => h && h.toLowerCase() === 'word');
+            const idx = wordColIdx !== -1 ? wordColIdx : 0;
+            
+            // Lấy chính xác cột "Word" ra để lưu vào mảng
+            const customWordsArr = customData.table.rows.map(row => (row.c[idx] && row.c[idx].v) ? row.c[idx].v.toString() : "").filter(w => w !== "");
+            setCustomSheetWords(customWordsArr);
+            localStorage.setItem("toeic_custom_words", JSON.stringify(customWordsArr));
+        } catch (e) {
+            console.log("Sheet Custom có thể đang trống");
+        }
+
       } catch (e) {
         console.error("Lỗi đếm tổng số từ:", e);
       }
@@ -1447,10 +1799,15 @@ function App() {
       </div>
     );
   }
+  
+  // TÍNH TOÁN SỐ TỪ CHƯA HỌC TRONG SHEET CUSTOM
+  const customLearnedSet = new Set(globalStats.vocab.learnedWords || []);
+  const unlearnedCustomCount = customSheetWords.filter(w => !customLearnedSet.has(w)).length;
 
   // --- ĐIỀU HƯỚNG MÀN HÌNH ---
   if (screen === "vocab_settings") {
-    return <QuizSettings mode="vocab" onBack={() => setScreen("home")} onStart={(settings) => { setQuizSettings(settings); setScreen("vocab"); }} />
+    // Gửi đúng số lượng từ Custom chưa học vào thanh kéo Min
+    return <QuizSettings mode="vocab" onBack={() => setScreen("home")} onStart={(settings) => { setQuizSettings(settings); setScreen("vocab"); }} customWordsCount={unlearnedCustomCount} />
   }
   if (screen === "collocation_settings") {
     return <QuizSettings mode="collocation" onBack={() => setScreen("home")} onStart={(settings) => { setQuizSettings(settings); setScreen("collocation"); }} />
@@ -1458,10 +1815,10 @@ function App() {
   if (screen === "grammar_settings") {
     return <QuizSettings mode="grammar" onBack={() => setScreen("home")} onStart={(settings) => { setQuizSettings(settings); setScreen("grammar"); }} />
   }
+ 
+  if (screen === "vocab") return <WordQuiz mode="vocab" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} settings={quizSettings} learnedWords={globalStats.vocab.learnedWords || []} isMusicPlaying={isMusicPlaying} />;
+  if (screen === "collocation") return <WordQuiz mode="collocation" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} settings={quizSettings} learnedWords={globalStats.collocation.learnedWords || []} isMusicPlaying={isMusicPlaying} />;
 
-  if (screen === "vocab") return <WordQuiz mode="vocab" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} settings={quizSettings} learnedWords={globalStats.vocab.learnedWords || []} />;
-  if (screen === "collocation") return <WordQuiz mode="collocation" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} settings={quizSettings} learnedWords={globalStats.collocation.learnedWords || []} />;
-  
   if (screen === "grammar") return <GrammarQuiz onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} settings={quizSettings} learnedQuestions={globalStats.grammar.learnedWords || []} />;
 
   // --- TÍNH TOÁN THÔNG SỐ TỪ VỰNG ---
