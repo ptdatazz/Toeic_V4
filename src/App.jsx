@@ -367,6 +367,7 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
 
   const [questionsData, setQuestionsData] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [fullVocabData, setFullVocabData] = useState([]);
 
   const [current, setCurrent] = useState(0); 
   const [score, setScore] = useState(0);
@@ -407,6 +408,7 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
           });
           return obj;
         });
+        setFullVocabData(fullData);
 
         const learnedSet = new Set(learnedWords || []);
         const newWords = [];
@@ -749,11 +751,11 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
             // Sinh lại đáp án (options) và kết quả (answer) cho phù hợp với cách chơi mới
             if (penaltyItem.type === "en_to_vn") {
                penaltyItem.answer = penaltyItem.meaning;
-               const wrongOptions = getRandomWrongOptions(fullData, penaltyItem, "meaning");
+               const wrongOptions = getRandomWrongOptions(fullVocabData, penaltyItem, "meaning"); // <-- SỬA Ở ĐÂY
                penaltyItem.options = shuffleArray([...wrongOptions, penaltyItem.meaning]);
             } else if (penaltyItem.type === "vn_to_en") {
                penaltyItem.answer = penaltyItem.word;
-               const wrongOptions = getRandomWrongOptions(fullData, penaltyItem, "word");
+               const wrongOptions = getRandomWrongOptions(fullVocabData, penaltyItem, "word"); // <-- SỬA Ở ĐÂY
                penaltyItem.options = shuffleArray([...wrongOptions, penaltyItem.word]);
             }
 
