@@ -381,6 +381,12 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
   const [typingValue, setTypingValue] = useState("");
   const [scrambleAvailable, setScrambleAvailable] = useState([]);
   const [scrambleSelected, setScrambleSelected] = useState([]);
+
+  const typingValueRef = useRef("");
+  useEffect(() => { typingValueRef.current = typingValue; }, [typingValue]);
+  const scrambleSelectedRef = useRef([]);
+  useEffect(() => { scrambleSelectedRef.current = scrambleSelected; }, [scrambleSelected]);
+
   // THÊM: State lưu trữ đáp án cho câu hỏi Crossword Boss
   const [crosswordInputs, setCrosswordInputs] = useState({});
 
@@ -408,7 +414,7 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
           const listData = await listRes.json();
           const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
           const flashModel = textModels.find(m => m.name.includes("flash"));
-          const selectedModel = flashModel ? flashModel.name : textModels[0].name;
+          const selectedModel = flashModel ? flashModel.name : textModels[0].name; 
 
           const prompt = `Giải thích ngắn gọn ý nghĩa của từ tiếng Anh "${keyword}" bằng tiếng Việt. Cung cấp phiên âm, từ loại, nghĩa chính và 1 ví dụ thực tế. Giữ nội dung xúc tích dưới 4 dòng.`;
           
@@ -679,7 +685,27 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
     // ĐÓNG BĂNG THỜI GIAN KHI GẶP TRÙM CUỐI
     if (questionsData[current]?.type === "crossword_boss") return;
 
-    if (timeLeft <= 0) { handleAnswer(null); return; }
+    // --- TÍNH NĂNG MỚI: TỰ ĐỘNG NỘP BÀI KHI HẾT GIỜ ---
+    if (timeLeft <= 0) { 
+        const currentQ = questionsData[current];
+        
+        // 1. Nếu là câu gõ chữ và đang có nội dung -> Lấy đi chấm điểm!
+        if (currentQ?.type === "typing" && typingValueRef.current.trim() !== "") {
+            handleAnswer(typingValueRef.current);
+            return;
+        }
+        // 2. Nếu là câu xếp chữ và đã kéo ít nhất 1 chữ -> Gộp lại lấy đi chấm điểm!
+        if (currentQ?.type === "scramble" && scrambleSelectedRef.current.length > 0) {
+            const word = scrambleSelectedRef.current.map(item => item.char).join('');
+            handleAnswer(word);
+            return;
+        }
+        
+        // 3. Trường hợp chưa gõ gì hoặc câu trắc nghiệm -> Thu bài trắng (Hết giờ)
+        handleAnswer(null); 
+        return; 
+    }
+    
     const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     return () => clearInterval(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1033,6 +1059,7 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
       {/* THANH THÔNG TIN TỐI GIẢN */}
       <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", height: "40px", marginBottom: "15px", gap: "10px" }}>
         
+        {/* HỘP BÊN TRÁI: CHỨA NÚT BACK */}
         <div style={{ flex: 1, display: "flex", justifyContent: "flex-start", overflow: "hidden" }}>
           {DIFFICULTY_LEVEL < 3 && (
             <button 
@@ -1046,6 +1073,7 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
           )}
         </div>
 
+        {/* HỘP Ở GIỮA: CHỨA ĐỒNG HỒ */}
         <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", backgroundColor: "#fff", padding: "4px 12px", borderRadius: "20px", boxShadow: "0 2px 5px rgba(0,0,0,0.05)", border: "1px solid #eee", flexShrink: 0 }}>
           {(currentQ.type === "en_to_vn" || currentQ.type === "listening") && (
             <button 
@@ -1061,23 +1089,36 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
           </span>
         </div>
 
-        <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", overflow: "hidden" }}>
+        {/* HỘP BÊN PHẢI: CHỨA ĐIỂM / MẠNG (ĐÃ THÊM FLEX 1 ĐỂ ÉP CÂN BẰNG TỶ LỆ) */}
+        <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
           {DIFFICULTY_LEVEL === 3 ? (
-            <span style={{ fontSize: "15px", whiteSpace: "nowrap", flexShrink: 0 }}>
-               {"❤️".repeat(Math.max(0, lives))}
-            </span>
-          ) : (
-            <span style={{ color: "#666", fontSize: "13px", whiteSpace: "nowrap", fontWeight: "bold", flexShrink: 0 }}>
-              {DIFFICULTY_LEVEL === 4 ? `Đúng: ${score}` : `${current + 1}/${questionsData.length}`}
-            </span>
-          )}
+              <div style={{ 
+                  display: "flex", alignItems: "center", gap: "4px", fontSize: "14px", whiteSpace: "nowrap", flexShrink: 0,
+                  padding: lives === 1 ? "4px 10px" : "0",
+                  backgroundColor: lives === 1 ? "#ffebee" : "transparent",
+                  border: lives === 1 ? "1px solid #f44336" : "none",
+                  borderRadius: "12px",
+                  color: lives === 1 ? "#d32f2f" : "#E91E63",
+                  fontWeight: "bold",
+                  animation: lives === 1 ? "heartbeat 0.8s infinite" : "none",
+                  boxShadow: lives === 1 ? "0 0 8px rgba(244, 67, 54, 0.6)" : "none"
+              }}>
+                 {lives === 1 ? "🔥 MẠNG CUỐI" : `${lives}x❤️`}
+              </div>
+            ) : (
+              <span style={{ color: "#666", fontSize: "13px", whiteSpace: "nowrap", fontWeight: "bold", flexShrink: 0 }}>
+                {DIFFICULTY_LEVEL === 4 ? `Đúng: ${score}` : `${current + 1}/${questionsData.length}`}
+              </span>
+            )}
         </div>
-
+        
       </div>
 
-      {DIFFICULTY_LEVEL < 4 && currentQ.type !== "crossword_boss" && <div style={{ width: "100%", height: "8px", backgroundColor: "#e0e0e0", borderRadius: "4px", overflow: "hidden", marginBottom: "20px" }}>
-        <div style={{ height: "100%", width: `${timePercentage}%`, backgroundColor: timeLeft <= 3 ? "#f44336" : "#4caf50", transition: "width 1s linear" }} />
-      </div>}
+      {DIFFICULTY_LEVEL < 4 && currentQ?.type !== "crossword_boss" && (
+        <div style={{ width: "100%", height: "8px", backgroundColor: "#e0e0e0", borderRadius: "4px", overflow: "hidden", marginBottom: "20px" }}>
+          <div style={{ height: "100%", width: `${timePercentage}%`, backgroundColor: timeLeft <= 3 ? "#f44336" : "#2196F3", transition: "width 1s linear" }} />
+        </div>
+      )}
 
       {/* --- CÁC KIỂU CÂU HỎI --- */}
 
@@ -1149,8 +1190,8 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
                          <div style={{ flex: 1 }}>
                              <div style={{ fontSize: "13px", fontWeight: "bold", color: "#555", marginBottom: "4px" }}>{item.meaning}</div>
                              <input
-                                 ref={(el) => bossInputRefs.current[idx] = el} // Gắn định vị cho ô nhập
-                                 type="text"
+                                 ref={(el) => bossInputRefs.current[idx] = el} 
+                                 type="email" // Đổi thành email để chặn Unikey
                                  value={crosswordInputs[idx] || ""}
                                  onChange={(e) => {
                                      const val = e.target.value.replace(/[^a-zA-Z\s-]/g, '');
@@ -1197,7 +1238,7 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
                  <h3 style={{ color: "#FF9800", marginBottom: "15px", fontSize: "18px" }}>Nhập Từ Khóa Bí Mật:</h3>
                  <input 
                     autoFocus // TÍNH NĂNG MỚI: Tự động hút con trỏ chuột vào đây khi vừa xuất hiện
-                    type="text" 
+                    type="email"
                     value={keywordInput}
                     onChange={(e) => {
                         const val = e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase();
@@ -1274,8 +1315,9 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
       {currentQ.type === "typing" && (
         <>
           <h2 style={{ fontSize: "22px", color: "#2c3e50", lineHeight: "1.4" }}>Gõ từ có nghĩa là <span style={{color: "#9C27B0"}}>"{currentQ.meaning}"</span></h2>
-          <form onSubmit={handleTypingSubmit} style={{ marginTop: "20px" }}>
-            <input ref={typingInputRef} type="text" value={typingValue} onChange={(e) => setTypingValue(e.target.value)} disabled={selected !== null} placeholder="Nhập vào đây..." style={{ width: "100%", padding: "15px", fontSize: "20px", textAlign: "center", borderRadius: "8px", border: "2px solid #ccc", outline: "none", textTransform: "lowercase" }} autoComplete="off" autoCorrect="off" spellCheck="false" />
+          {/* THÊM noValidate vào form và đổi type="email" để hack chặn Unikey */}
+          <form onSubmit={handleTypingSubmit} style={{ marginTop: "20px" }} noValidate>
+            <input ref={typingInputRef} type="email" value={typingValue} onChange={(e) => setTypingValue(e.target.value)} disabled={selected !== null} placeholder="Nhập vào đây..." style={{ width: "100%", padding: "15px", fontSize: "20px", textAlign: "center", borderRadius: "8px", border: "2px solid #ccc", outline: "none", textTransform: "lowercase" }} autoComplete="off" autoCorrect="off" spellCheck="false" />
             {selected === null && (
               <button type="submit" style={{ width: "100%", padding: "12px", marginTop: "15px", fontSize: "18px", backgroundColor: "#2196F3", color: "white", borderRadius: "8px", border: "none", cursor: typingValue.trim() ? "pointer" : "not-allowed", opacity: typingValue.trim() ? 1 : 0.5 }}>Kiểm tra</button>
             )}
@@ -1684,9 +1726,19 @@ function GrammarQuiz({ onBack, updateGlobal, settings, learnedQuestions }) {
         <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px" }}>
           <span style={{ fontSize: "12px", backgroundColor: "#2196F3", color: "white", padding: "3px 8px", borderRadius: "4px", fontWeight: "bold", textTransform: "uppercase" }}>{TOEIC_PART}</span>
           {DIFFICULTY_LEVEL === 3 ? (
-            <span style={{ fontSize: "15px", whiteSpace: "nowrap", flexShrink: 0 }}>
-               {"❤️".repeat(Math.max(0, lives))}
-            </span>
+            <div style={{ 
+                display: "flex", alignItems: "center", gap: "4px", fontSize: "14px", whiteSpace: "nowrap", flexShrink: 0,
+                padding: lives === 1 ? "4px 10px" : "0",
+                backgroundColor: lives === 1 ? "#ffebee" : "transparent",
+                border: lives === 1 ? "1px solid #f44336" : "none",
+                borderRadius: "12px",
+                color: lives === 1 ? "#d32f2f" : "#E91E63",
+                fontWeight: "bold",
+                animation: lives === 1 ? "heartbeat 0.8s infinite" : "none",
+                boxShadow: lives === 1 ? "0 0 8px rgba(244, 67, 54, 0.6)" : "none"
+            }}>
+               {lives === 1 ? "🔥 MẠNG CUỐI" : `${lives} ❤️`}
+            </div>
           ) : (
             <span style={{ color: "#666", fontSize: "13px", whiteSpace: "nowrap", fontWeight: "bold", flexShrink: 0 }}>
               {DIFFICULTY_LEVEL === 4 ? `Đúng: ${score}` : `${current + 1}/${questionsData.length}`}
@@ -2173,6 +2225,13 @@ function App() {
         @keyframes gradientMove {
           0% { background-position: 100% 0; }
           100% { background-position: -100% 0; }
+        }
+      @keyframes heartbeat {
+          0% { transform: scale(1); }
+          15% { transform: scale(1.15); color: #b71c1c; }
+          30% { transform: scale(1); }
+          45% { transform: scale(1.15); color: #b71c1c; }
+          60% { transform: scale(1); }
         }
       `}</style>
     </div>
