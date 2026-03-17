@@ -384,7 +384,62 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
   // THÊM: State lưu trữ đáp án cho câu hỏi Crossword Boss
   const [crosswordInputs, setCrosswordInputs] = useState({});
 
+  // THÊM: State quản lý nhập từ khóa bí mật và AI giải thích
+  const [keywordInput, setKeywordInput] = useState("");
+  const [isKeywordSolved, setIsKeywordSolved] = useState(false);
+  const [keywordExplanation, setKeywordExplanation] = useState("");
+  const [isFetchingExplanation, setIsFetchingExplanation] = useState(false);
+  const fetchedKeywordRef = useRef(null);
+
+  // THÊM: Hàm gọi AI để tra cứu từ khóa
+  const fetchKeywordExplanation = async (keyword) => {
+      // NẾU TỪ NÀY ĐÃ ĐƯỢC GỌI RỒI THÌ CẤM GỌI LẠI TRÁNH TREO MÁY!
+      if (fetchedKeywordRef.current === keyword) return; 
+      fetchedKeywordRef.current = keyword;
+      
+      setIsFetchingExplanation(true);
+      try {
+          const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+          if (!API_KEY || API_KEY.includes("DÁN_MÃ")) {
+              setKeywordExplanation("Không tìm thấy API Key để tra cứu AI.");
+              setIsFetchingExplanation(false); return;
+          }
+          const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
+          const listData = await listRes.json();
+          const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
+          const flashModel = textModels.find(m => m.name.includes("flash"));
+          const selectedModel = flashModel ? flashModel.name : textModels[0].name;
+
+          const prompt = `Giải thích ngắn gọn ý nghĩa của từ tiếng Anh "${keyword}" bằng tiếng Việt. Cung cấp phiên âm, từ loại, nghĩa chính và 1 ví dụ thực tế. Giữ nội dung xúc tích dưới 4 dòng.`;
+          
+          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${selectedModel}:generateContent?key=${API_KEY}`;
+          const res = await fetch(apiUrl, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+          });
+          const data = await res.json();
+          
+          // BẮT LỖI TRIỆT ĐỂ: In thẳng lỗi ra màn hình thay vì kẹt loading
+          if (data.error) {
+              setKeywordExplanation(`Lỗi từ AI: ${data.error.message}`);
+          } else if (data.candidates && data.candidates.length > 0) {
+              setKeywordExplanation(data.candidates[0].content.parts[0].text);
+          } else {
+              setKeywordExplanation("AI không thể phân tích từ khóa này.");
+          }
+      } catch (e) {
+          setKeywordExplanation("Lỗi kết nối mạng, không thể lấy giải thích.");
+      }
+      setIsFetchingExplanation(false);
+  };
+
+  const isFetchingDataRef = useRef(false); 
+
   useEffect(() => {
+
+    if (isFetchingDataRef.current) return;
+    isFetchingDataRef.current = true;
+
     const fetchVocabFromSheets = async () => {
       try {
         const SHEET_ID = "1nAdOxZBZ3-Bawh3Ks54KaIYLPgGZfTuchebwbCYW8dU";
@@ -464,45 +519,74 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
       if (mode === "vocab" && generatedQs.length >= 3) {
           const availableWords = generatedQs.map(q => q); 
           const wordListStr = availableWords.map(w => w.word).join(", ");
-          let aiKeyword = "";
+          let aiKeywords = []; // Chuyển thành mảng để hứng nhiều từ AI đẻ ra
 
           // TÍNH TOÁN ĐỘ DÀI RANDOM TỪ 3 - 10 KÝ TỰ (Không vượt quá số từ đang học)
-          const maxPossibleLen = Math.min(availableWords.length, 10);
+          const maxPossibleLen = Math.min(availableWords.length, 15);
           const targetRandomLen = Math.floor(Math.random() * (maxPossibleLen - 3 + 1)) + 3;
 
-          // 1. GỌI AI ĐỂ SINH TỪ KHÓA DỰA TRÊN TỪ VỰNG VỪA HỌC
+          // 1. GỌI AI ĐỂ SINH DANH SÁCH TỪ KHÓA DỰA TRÊN TỪ VỰNG VỪA HỌC
           try {
               const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
               if (API_KEY && !API_KEY.includes("DÁN_MÃ")) {
-                  console.log(`[BOSS] Đang nhờ AI suy nghĩ từ khóa dài đúng ${targetRandomLen} ký tự...`);
+                  console.log(`[BOSS] Đang nhờ AI suy nghĩ danh sách từ khóa (tối đa ${maxPossibleLen} ký tự)...`);
                   
-                  // Ép AI đẻ ra từ khóa có độ dài chính xác bằng targetRandomLen
-                  const prompt = `Tôi vừa học các từ vựng tiếng Anh sau: ${wordListStr}. Hãy nghĩ ra 1 từ khóa tiếng Anh bí mật (CÓ ĐÚNG ${targetRandomLen} CHỮ CÁI). Từ khóa này nên liên quan đến chủ đề chung của các từ trên, hoặc mang ý nghĩa cổ vũ (như WIN, TOP, BEST, FOCUS, MASTER). CHỈ TRẢ VỀ DUY NHẤT 1 TỪ ĐÓ, viết hoa, không giải thích gì thêm.`;
+                  // --- THÊM: BỘ ĐẾM NGƯỢC 5 GIÂY CHỐNG TREO GAME ---
+                  // Nếu sau 5 giây AI không trả lời -> Ép hủy kết nối để game load ngay!
+                  const controller = new AbortController();
+                  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+                  // BƯỚC 1: Lấy danh sách Model chuẩn xác nhất từ Google
+                  const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`, { signal: controller.signal });
+                  const listData = await listRes.json();
+                  const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
                   
-                  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
+                  // Chọn model 1.5-flash hoặc model khả dụng đầu tiên
+                  const flashModel = textModels.find(m => m.name.includes("1.5-flash")) || textModels.find(m => m.name.includes("flash"));
+                  const selectedModel = flashModel ? flashModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
+
+                  // BƯỚC 2: Gọi AI bằng Model tự động
+                  const prompt = `Tôi vừa học các từ vựng tiếng Anh sau: ${wordListStr}. Hãy nghĩ ra 10 từ khóa tiếng Anh bí mật khác nhau.
+                  YÊU CẦU BẮT BUỘC:
+                  - Độ dài mỗi từ khóa nằm trong khoảng từ 3 đến ${maxPossibleLen} chữ cái.
+                  - Từ khóa phải liên quan đến chủ đề chung của các từ vựng trên, hoặc mang ý nghĩa cổ vũ (như WIN, FOCUS, MASTER, SUCCESS).
+                  - CHỈ TRẢ VỀ DANH SÁCH 10 TỪ, phân tách nhau bằng dấu phẩy (,). Không giải thích gì thêm, viết hoa toàn bộ.`;
+                  
+                  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${selectedModel}:generateContent?key=${API_KEY}`;
+                  const res = await fetch(apiUrl, {
                       method: "POST", headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+                      signal: controller.signal // Ép bộ đếm ngược vào lệnh gọi AI
                   });
+                  
+                  clearTimeout(timeoutId); // Giải trừ bom hẹn giờ nếu AI trả lời sớm hơn 5s
+
                   const data = await res.json();
                   if (data.candidates && data.candidates.length > 0) {
-                      aiKeyword = data.candidates[0].content.parts[0].text.trim().toUpperCase().replace(/[^A-Z]/g, '');
-                      console.log("[BOSS] AI chọn từ khóa:", aiKeyword);
+                      const rawText = data.candidates[0].content.parts[0].text;
+                      
+                      // Tách chuỗi của AI thành mảng, lọc rác
+                      aiKeywords = rawText.split(',')
+                          .map(w => w.trim().toUpperCase().replace(/[^A-Z]/g, ''))
+                          .filter(w => w.length >= 3 && w.length <= maxPossibleLen);
+                          
+                      console.log("[BOSS] AI đề xuất danh sách từ khóa:", aiKeywords);
                   }
               }
-          } catch (e) { console.log("[BOSS] AI đang bận, dùng từ khóa dự phòng."); }
+          } catch (e) { 
+              console.log("[BOSS] Mạng chậm hoặc AI đang bận, hủy kết nối dùng từ khóa dự phòng để vào game ngay."); 
+          }
 
           // 2. TẠO MẠNG LƯỚI CROSSWORD TỪ TỪ KHÓA
+          // PHỤC HỒI LẠI DANH SÁCH TỪ KHÓA DỰ PHÒNG XỊN SÒ (Của bác đang bị mất, chỉ còn chữ "WIN")
           const fallbacks = ["WIN", "TOP", "PRO", "YES", "BEST", "GOOD", "FAST", "LEAD", "SMART", "GREAT", "FOCUS", "SUPER", "EXPERT", "MASTER", "WINNER", "GENIUS", "SUCCESS", "CHAMPION", "BRILLIANT"];
           
-          // Lọc bỏ những từ dự phòng dài hơn số lượng từ vựng bạn đang học
           let validFallbacks = fallbacks.filter(w => w.length <= maxPossibleLen);
-          
-          // FIX LỖI LUÔN LÀ 3 KÝ TỰ: 
-          // Trộn ngẫu nhiên trước, sau đó ép các từ có độ dài GẦN BẰNG con số random lên đầu danh sách để thử trước!
           validFallbacks = shuffleArray(validFallbacks); 
           validFallbacks.sort((a, b) => Math.abs(a.length - targetRandomLen) - Math.abs(b.length - targetRandomLen));
           
-          let keywordsToTry = (aiKeyword && aiKeyword.length <= maxPossibleLen && aiKeyword.length >= 3) ? [aiKeyword, ...validFallbacks] : validFallbacks;
+          // Ép hệ thống ưu tiên thử TOÀN BỘ danh sách từ khóa AI vừa nghĩ ra trước. Nếu xịt hết mới tới fallbacks!
+          let keywordsToTry = [...aiKeywords, ...validFallbacks];
 
           let bossWords = [];
           let valid = false;
@@ -771,6 +855,92 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
     }
   };
 
+  // --- THÊM TÍNH NĂNG: ẤN ENTER ĐỂ QUA CÂU HOẶC HOÀN THÀNH BOSS ---
+  useEffect(() => {
+    const handleEnterKey = (e) => {
+        if (e.key === "Enter") {
+            const currentQ = questionsData[current];
+            if (!currentQ) return;
+
+            // 1. Chuyển câu tiếp theo nếu đang hiện giải thích (đã trả lời xong)
+            if (selected !== null && answerStatus !== null && currentQ.type !== "crossword_boss") {
+                e.preventDefault();
+                nextQuestion();
+                return;
+            }
+
+            // 2. Nhấn Hoàn Thành khi làm xong Boss (Chỉ khi đã giải mã xong từ khóa)
+            if (currentQ.type === "crossword_boss" && !isGameOver) {
+                const isAllCorrect = currentQ.words.every((item, idx) => 
+                    (crosswordInputs[idx] || "").toLowerCase().trim() === item.word.toLowerCase().trim()
+                );
+                // Đã điền xong map VÀ đã gõ đúng từ khóa
+                if (isAllCorrect && isKeywordSolved) {
+                    e.preventDefault();
+                    handleAnswer("WIN");
+                }
+            }
+        }
+    };
+
+    window.addEventListener("keydown", handleEnterKey);
+    return () => window.removeEventListener("keydown", handleEnterKey);
+  }, [current, questionsData, selected, answerStatus, isGameOver, crosswordInputs]);
+
+  // --- THÊM TÍNH NĂNG: GỌI AI CHUẨN BỊ TRƯỚC BÀI GIẢI THÍCH KHI VỪA GẶP BOSS ---
+  useEffect(() => {
+    const currentQ = questionsData[current];
+    if (currentQ && currentQ.type === "crossword_boss") {
+        fetchKeywordExplanation(currentQ.keyword);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, questionsData]); // Đã xóa bỏ các điều kiện dễ gây lặp vô tận
+
+  // --- THÊM TÍNH NĂNG: GÕ BÀN PHÍM CHO CÂU HỎI XẾP CHỮ (SCRAMBLE) ---
+  useEffect(() => {
+    const currentQ = questionsData[current];
+    // Chỉ kích hoạt khi đang ở câu xếp chữ, game đang chạy và chưa nộp bài
+    if (!currentQ || currentQ.type !== "scramble" || selected !== null || isGameOver) return;
+
+    const handleKeyDown = (e) => {
+        // Bỏ qua nếu người dùng đang xài phím tắt (Ctrl+R, Alt+Tab...)
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+        const key = e.key.toLowerCase();
+
+        // 1. Nếu ấn Enter -> Nộp bài (chỉ nộp được khi đã kéo hết chữ)
+        if (key === "enter") {
+            e.preventDefault();
+            if (scrambleAvailable.length === 0) {
+                submitScramble();
+            }
+            return;
+        }
+
+        // 2. Nếu ấn Backspace (Nút Xóa) -> Trả lại ký tự cuối cùng vừa chọn
+        if (key === "backspace") {
+            e.preventDefault();
+            if (scrambleSelected.length > 0) {
+                const lastItem = scrambleSelected[scrambleSelected.length - 1];
+                handleScrambleClick(lastItem, false);
+            }
+            return;
+        }
+
+        // 3. Nếu ấn các phím chữ cái (A-Z)
+        if (/^[a-z]$/.test(key)) {
+            // Tìm chữ cái đó trong rổ (nếu chữ đó có tồn tại thì mới cho nhặt)
+            const foundItem = scrambleAvailable.find(item => item.char.toLowerCase() === key);
+            if (foundItem) {
+                handleScrambleClick(foundItem, true);
+            }
+        }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [current, questionsData, selected, isGameOver, scrambleAvailable, scrambleSelected]);
+
   const handleScrambleClick = (letterObj, fromAvailable) => {
       if (selected !== null) return;
       playSound("click");
@@ -801,6 +971,11 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
     setAnswerStatus(null); 
     setTypingValue(""); 
     setCrosswordInputs({});
+
+    setKeywordInput("");
+    setIsKeywordSolved(false);
+    setKeywordExplanation("");
+
     const nextIdx = current + 1;
     setCurrent(nextIdx);
     setTimeLeft(TIME_PER_QUESTION); 
@@ -851,7 +1026,10 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
   }
 
   return (
-    <div className="container">
+    <div className="container" style={{ 
+        maxWidth: (currentQ && currentQ.type === "crossword_boss") ? "750px" : "450px", 
+        transition: "max-width 0.5s ease-in-out" 
+    }}>
       {/* THANH THÔNG TIN TỐI GIẢN */}
       <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", height: "40px", marginBottom: "15px", gap: "10px" }}>
         
@@ -907,7 +1085,7 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
       {currentQ.type === "crossword_boss" && (
         <div style={{ textAlign: "left", animation: "popIn 0.5s ease-out" }}>
           <h2 style={{ fontSize: "22px", color: "#2c3e50", textAlign: "center", textTransform: "uppercase" }}>🧩 Vượt Ải Ô Chữ</h2>
-          <p style={{ color: "#F44336", textAlign: "center", marginBottom: "20px", fontWeight: "bold", fontSize: "14px" }}>Không tính thời gian. Điền từ để tìm TỪ KHÓA BÍ ẨN dọc màu cam!</p>
+          <p style={{ color: "#F44336", textAlign: "center", marginBottom: "20px", fontWeight: "bold", fontSize: "14px" }}>Điền từ để tìm TỪ KHÓA BÍ ẨN dọc màu cam!</p>
 
           {/* VẼ BẢN ĐỒ MAP CROSSWORD */}
           {/* VẼ BẢN ĐỒ MAP CROSSWORD TỰ ĐỘNG XOAY CHIỀU */}
@@ -1013,14 +1191,47 @@ function WordQuiz({ mode, onBack, updateGlobal, settings, learnedWords, isMusicP
              })}
           </div>
 
-          {/* HIỆU ỨNG TỪ KHÓA KHI HOÀN THÀNH */}
+          {/* HIỆU ỨNG TỪ KHÓA KHI HOÀN THÀNH BẢN ĐỒ */}
           {currentQ.words.every((item, idx) => (crosswordInputs[idx] || "").toLowerCase().trim() === item.word.toLowerCase().trim()) ? (
              <div style={{ marginTop: "25px", textAlign: "center", animation: "popIn 0.5s" }}>
-                 <h3 style={{ color: "#FF9800", marginBottom: "15px" }}>Từ khóa bí mật là: <br/><span style={{ fontSize: "32px", color: "#e65100", letterSpacing: "5px" }}>{currentQ.keyword}</span></h3>
-                 <button onClick={() => handleAnswer("WIN")} style={{ width: "100%", padding: "15px", fontSize: "18px", backgroundColor: "#4CAF50", color: "white", borderRadius: "8px", border: "none", fontWeight: "bold", cursor: "pointer", boxShadow: "0 4px 6px rgba(0,0,0,0.1)" }}>🎉 Tuyệt vời! Hoàn thành 🎉</button>
+                 <h3 style={{ color: "#FF9800", marginBottom: "15px", fontSize: "18px" }}>Nhập Từ Khóa Bí Mật:</h3>
+                 <input 
+                    autoFocus // TÍNH NĂNG MỚI: Tự động hút con trỏ chuột vào đây khi vừa xuất hiện
+                    type="text" 
+                    value={keywordInput}
+                    onChange={(e) => {
+                        const val = e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase();
+                        setKeywordInput(val);
+                        // Ngay khi gõ đúng từ khóa
+                        if (val === currentQ.keyword && !isKeywordSolved) {
+                            setIsKeywordSolved(true);
+                            playSound("combo_max");
+                            confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, zIndex: 9999 });
+                            // ĐÃ XÓA LỆNH GỌI AI Ở ĐÂY VÌ AI ĐÃ CHUẨN BỊ XONG TỪ TRƯỚC RỒI!
+                        }
+                    }}
+                    disabled={isKeywordSolved}
+                    placeholder={`${currentQ.keyword.length} CHỮ CÁI...`}
+                    style={{ width: "100%", maxWidth: "300px", padding: "12px", fontSize: "24px", textAlign: "center", textTransform: "uppercase", letterSpacing: "5px", borderRadius: "8px", border: isKeywordSolved ? "2px solid #4CAF50" : "2px solid #FF9800", outline: "none", backgroundColor: isKeywordSolved ? "#e8f5e9" : "#fff", fontWeight: "bold", color: isKeywordSolved ? "#2e7d32" : "#e65100", transition: "0.3s" }}
+                 />
+
+                 {/* HIỂN THỊ AI GIẢI THÍCH TỪ KHÓA */}
+                 {isKeywordSolved && (
+                     <div style={{ marginTop: "20px", animation: "popIn 0.5s" }}>
+                         {isFetchingExplanation ? (
+                             <p style={{ color: "#2196F3", fontStyle: "italic", fontWeight: "bold" }}>🤖 AI đang phân tích nghĩa của từ "{currentQ.keyword}"...</p>
+                         ) : (
+                             <div style={{ backgroundColor: "#e3f2fd", padding: "15px", borderRadius: "8px", border: "1px dashed #2196F3", textAlign: "left", marginBottom: "20px" }}>
+                                 <h4 style={{ color: "#1565c0", margin: "0 0 8px 0", display: "flex", alignItems: "center", gap: "5px" }}><span>🤖</span> AI Giải Thích:</h4>
+                                 <p style={{ margin: 0, color: "#333", fontSize: "15px", whiteSpace: "pre-line", lineHeight: "1.6" }}>{keywordExplanation}</p>
+                             </div>
+                         )}
+                         <button onClick={() => handleAnswer("WIN")} style={{ width: "100%", padding: "15px", fontSize: "18px", backgroundColor: "#4CAF50", color: "white", borderRadius: "8px", border: "none", fontWeight: "bold", cursor: "pointer", boxShadow: "0 4px 6px rgba(0,0,0,0.1)" }}>🎉 Tuyệt vời! Hoàn thành 🎉</button>
+                     </div>
+                 )}
              </div>
           ) : (
-             <button disabled style={{ width: "100%", padding: "15px", marginTop: "25px", fontSize: "18px", backgroundColor: "#ccc", color: "#666", borderRadius: "8px", border: "none", fontWeight: "bold", cursor: "not-allowed" }}>🔒 Giải mã để mở khóa</button>
+             <button disabled style={{ width: "100%", padding: "15px", marginTop: "25px", fontSize: "18px", backgroundColor: "#ccc", color: "#666", borderRadius: "8px", border: "none", fontWeight: "bold", cursor: "not-allowed" }}>🔒 Giải mã các ô bên trên để tìm Từ Khóa</button>
           )}
         </div>
       )}
@@ -1326,6 +1537,22 @@ function GrammarQuiz({ onBack, updateGlobal, settings, learnedQuestions }) {
       return () => clearInterval(interval);
     }
   }, [isGameOver, current, questionsData.length, DIFFICULTY_LEVEL]);
+
+  // --- THÊM TÍNH NĂNG: ẤN ENTER ĐỂ QUA CÂU (NGỮ PHÁP) ---
+  useEffect(() => {
+    const handleEnterKey = (e) => {
+        if (e.key === "Enter") {
+            // Nếu đã trả lời và đang hiện giải thích -> Ấn Enter để đi tiếp
+            if (selected !== null && answerStatus !== null) {
+                e.preventDefault();
+                nextQuestion();
+            }
+        }
+    };
+
+    window.addEventListener("keydown", handleEnterKey);
+    return () => window.removeEventListener("keydown", handleEnterKey);
+  }, [selected, answerStatus]);
 
   const encourages = ["Chú ý bẫy nhé! 💪", "Đọc kỹ đoạn văn xíu nào! 🌱", "Suýt nữa là đúng rồi! 😅"];
 
