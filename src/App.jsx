@@ -886,7 +886,8 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isM
     let isCorrect = false;
 
     if (!isTimeout) {
-       if (currentQ.type === "typing" || currentQ.type === "scramble") {
+       // ĐÃ FIX: Bổ sung Flashcard vào danh sách miễn trừ phân biệt viết hoa/viết thường
+       if (currentQ.type === "typing" || currentQ.type === "scramble" || currentQ.type === "flashcard") {
            isCorrect = actualOption.trim().toLowerCase() === currentQ.answer.trim().toLowerCase();
        } else {
            isCorrect = actualOption === currentQ.answer;
