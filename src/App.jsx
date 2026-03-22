@@ -12,6 +12,21 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 
+// --- HỆ THỐNG TRẠM ĐIỆN TỔNG QUẢN LÝ API KEY CHỐNG SẬP QUOTA ---
+const RAW_KEYS = import.meta.env.VITE_GEMINI_API_KEY || "";
+const GLOBAL_API_KEYS = RAW_KEYS.split(',').map(k => k.trim()).filter(k => k);
+let globalKeyIndex = 0; // Trạm tổng theo dõi xem đang xài Key số mấy
+
+const getActiveKey = () => GLOBAL_API_KEYS[globalKeyIndex] || "";
+const rotateKey = () => {
+    if (globalKeyIndex < GLOBAL_API_KEYS.length - 1) {
+        globalKeyIndex++;
+        console.log(`[HỆ THỐNG] 🔄 Đã tự động chuyển toàn bộ App sang API Key dự phòng số ${globalKeyIndex + 1}`);
+        return true; // Chuyển thành công
+    }
+    return false; // Hết sạch Key dự phòng
+};
+
 // --- ÂM THANH HIỆU ỨNG (SFX) ---
 const playSound = (type) => {
   let url = "";
@@ -1615,7 +1630,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
   const REQUIRED_STREAK = settings.requiredStreak; 
   const TOEIC_PART = settings.toeicPart || "part5";
   
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+  const GEMINI_API_KEY = getActiveKey(); // Lấy Key từ Trạm Điện Tổng
 
   const [questionsData, setQuestionsData] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
@@ -1741,57 +1756,48 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
 
 
   // HÀM GỌI AI ĐỂ SOẠN ĐỀ THEO TỪNG PART (ĐÃ NÂNG CẤP PROMPT CHUẨN ETS)
+  // HÀM GỌI AI ĐỂ SOẠN ĐỀ THEO TỪNG PART (TÍCH HỢP TỰ ĐỘNG ĐỔI KEY)
   useEffect(() => {
     const fetchGrammarFromAI = async () => {
       if (!GEMINI_API_KEY || String(GEMINI_API_KEY).includes("DÁN_MÃ") || String(GEMINI_API_KEY).includes("ĐIỀN_API_KEY")) {
-          alert("LỖI: Không tìm thấy API Key!\n\nNếu đang chạy trên máy tính: Hãy kiểm tra file .env và nhớ tắt terminal đi chạy lại lệnh 'npm run dev'.\nNếu trên Vercel: Hãy kiểm tra mục Environment Variables.");
+          alert("LỖI: Không tìm thấy API Key!");
           onBack();
           return;
       }
 
       setLoadingData(true);
-      setLoadingMsg(`🤖 Thầy AI đang biên soạn đề TOEIC ${TOEIC_PART.toUpperCase()} chuẩn ETS...`);
+      // Đổi dòng thông báo nếu đang xài Key dự phòng
+      if (keyIndex > 0) {
+          setLoadingMsg(`🔄 Đang thử lại với API Key dự phòng số ${keyIndex + 1}...`);
+      } else {
+          setLoadingMsg(`🤖 Thầy AI đang biên soạn đề TOEIC ${TOEIC_PART.toUpperCase()} chuẩn ETS...`);
+      }
       
       let partInstruction = "";
       if (TOEIC_PART === "part5") {
-          partInstruction = `Đây là đề TOEIC Part 5 (Ngữ pháp/Từ vựng câu đơn).
-          - Trường "passage": bắt buộc để chuỗi rỗng "".
-          - Trường "question": Tạo 1 câu tiếng Anh FORMAT CHUẨN ETS (văn phong công sở, thương mại, tuyển dụng, báo cáo...) có đúng 1 chỗ trống (___) cần điền.`;
+          partInstruction = `Đây là đề TOEIC Part 5 (Ngữ pháp/Từ vựng câu đơn).\n- Trường "passage": bắt buộc để chuỗi rỗng "".\n- Trường "question": Tạo 1 câu tiếng Anh FORMAT CHUẨN ETS (văn phong công sở, thương mại, tuyển dụng, báo cáo...) có đúng 1 chỗ trống (___) cần điền.`;
       } else if (TOEIC_PART === "part6") {
-          partInstruction = `Đây là đề TOEIC Part 6 (Điền từ vào đoạn văn).
-          - Trường "passage": Tạo 1 đoạn văn ngắn (email, thông báo, quảng cáo...) CHUẨN VĂN PHONG ETS TOEIC. ĐỤC ĐÚNG 1 LỖ (___) TRONG ĐOẠN VĂN NÀY. TUYỆT ĐỐI KHÔNG để lộ từ đáp án bên trong đoạn văn.
-          - Trường "question": Điền mặc định một câu lệnh: "Choose the best word or phrase to fill in the blank."`;
+          partInstruction = `Đây là đề TOEIC Part 6 (Điền từ vào đoạn văn).\n- Trường "passage": Tạo 1 đoạn văn ngắn (email, thông báo, quảng cáo...) CHUẨN VĂN PHONG ETS TOEIC. ĐỤC ĐÚNG 1 LỖ (___) TRONG ĐOẠN VĂN NÀY. TUYỆT ĐỐI KHÔNG để lộ từ đáp án bên trong đoạn văn.\n- Trường "question": Điền mặc định một câu lệnh: "Choose the best word or phrase to fill in the blank."`;
       } else if (TOEIC_PART === "part7") {
-          partInstruction = `Đây là đề TOEIC Part 7 (Đọc hiểu đoạn văn).
-          - Trường "passage": Tạo 1 đoạn văn tiếng Anh hoàn chỉnh (thư từ, bài báo, lịch trình...) ĐÚNG ĐỘ KHÓ VÀ CHỦ ĐỀ CỦA ETS TOEIC (KHÔNG đục lỗ).
-          - Trường "question": Tạo 1 câu hỏi Đọc hiểu (Ví dụ: What is the main purpose of the email? / What is suggested about Mr. Smith?). Cấm dùng dạng đục lỗ ở đây.`;
+          partInstruction = `Đây là đề TOEIC Part 7 (Đọc hiểu đoạn văn).\n- Trường "passage": Tạo 1 đoạn văn tiếng Anh hoàn chỉnh (thư từ, bài báo, lịch trình...) ĐÚNG ĐỘ KHÓ VÀ CHỦ ĐỀ CỦA ETS TOEIC (KHÔNG đục lỗ).\n- Trường "question": Tạo 1 câu hỏi Đọc hiểu (Ví dụ: What is the main purpose of the email? / What is suggested about Mr. Smith?). Cấm dùng dạng đục lỗ ở đây.`;
       } else if (TOEIC_PART === "scan_skim") {
-          partInstruction = `Đây là bài tập rèn luyện kỹ năng Skimming (Đọc lấy ý chính) và Scanning (Quét tìm thông tin chi tiết) của bài thi TOEIC.
-          - Trường "passage": Tạo 1 văn bản HOÀN CHỈNH, RẤT DÀI VÀ NHIỀU THÔNG TIN ĐÁNH LỪA (như một hóa đơn chi tiết, lịch trình nhiều ngày, bài báo cáo số liệu, hoặc chuỗi email nội bộ dài).
-          - Trường "question": Tạo 1 câu hỏi ép người đọc phải phản xạ nhanh. Phải hỏi về một CON SỐ, NGÀY THÁNG, TÊN RIÊNG cụ thể (Scanning), HOẶC hỏi ý chính bao quát toàn bài (Skimming). Đảm bảo đáp án có thể tìm thấy trực tiếp bằng cách quét mắt mà không cần dịch toàn bộ bài.`;
+          partInstruction = `Đây là bài tập rèn luyện kỹ năng Skimming (Đọc lấy ý chính) và Scanning (Quét tìm thông tin chi tiết) của bài thi TOEIC.\n- Trường "passage": Tạo 1 văn bản HOÀN CHỈNH, RẤT DÀI VÀ NHIỀU THÔNG TIN ĐÁNH LỪA (như một hóa đơn chi tiết, lịch trình nhiều ngày, bài báo cáo số liệu, hoặc chuỗi email nội bộ dài).\n- Trường "question": Tạo 1 câu hỏi ép người đọc phải phản xạ nhanh. Phải hỏi về một CON SỐ, NGÀY THÁNG, TÊN RIÊNG cụ thể (Scanning), HOẶC hỏi ý chính bao quát toàn bài (Skimming). Đảm bảo đáp án có thể tìm thấy trực tiếp bằng cách quét mắt mà không cần dịch toàn bộ bài.`;
       }
 
-
-      const prompt = `Bạn là một chuyên gia luyện thi TOEIC chuẩn ETS. Hãy tạo ${QUIZ_LIMIT} câu hỏi trắc nghiệm tiếng Anh. Mức độ khó: ${DIFFICULTY_LEVEL <= 2 ? "Dễ và Trung bình (Mục tiêu 450-600)" : "Khó, bẫy từ vựng/ngữ pháp (Mục tiêu 700-900)"}.
-      ${partInstruction}
-      YÊU CẦU BẮT BUỘC: 
-      - Chỉ trả về duy nhất 1 mảng JSON, tuyệt đối không có markdown (\`\`\`json) hay bất kỳ chữ nào khác thừa thãi.
-      - Cấu trúc JSON chuẩn xác của mỗi phần tử như sau:
-        [
-          {
-            "passage": "Nội dung đoạn văn (Chỉ có ở Part 6 và 7).",
-            "question": "Nội dung câu hỏi.",
-            "options": ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],
-            "answer": "Đáp án đúng (phải khớp chính tả 100% với 1 trong 4 option)",
-            "explanation": "Giải thích chi tiết bằng tiếng Việt. Dịch nghĩa và giải thích vì sao chọn đáp án này."
-          }
-        ]`;
+      const prompt = `Bạn là một chuyên gia luyện thi TOEIC chuẩn ETS. Hãy tạo ${QUIZ_LIMIT} câu hỏi trắc nghiệm tiếng Anh. Mức độ khó: ${DIFFICULTY_LEVEL <= 2 ? "Dễ và Trung bình (Mục tiêu 450-600)" : "Khó, bẫy từ vựng/ngữ pháp (Mục tiêu 700-900)"}.\n${partInstruction}\nYÊU CẦU BẮT BUỘC:\n- Chỉ trả về duy nhất 1 mảng JSON, tuyệt đối không có markdown (\`\`\`json) hay bất kỳ chữ nào khác thừa thãi.\n- Cấu trúc JSON chuẩn xác của mỗi phần tử như sau:\n[\n  {\n    "passage": "Nội dung đoạn văn (Chỉ có ở Part 6 và 7).",\n    "question": "Nội dung câu hỏi.",\n    "options": ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],\n    "answer": "Đáp án đúng (phải khớp chính tả 100% với 1 trong 4 option)",\n    "explanation": "Giải thích chi tiết bằng tiếng Việt. Dịch nghĩa và giải thích vì sao chọn đáp án này."\n  }\n]`;
 
       try {
         const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
         const listData = await listRes.json();
 
         if (listData.error) {
+            // TỰ ĐỘNG ĐỔI KEY NẾU LỖI QUOTA HOẶC 429
+            if (listData.error.message.toLowerCase().includes("quota") || listData.error.code === 429) {
+                 if (rotateKey()) {
+                     fetchGrammarFromAI(); // Đổi key thành công thì tự động chạy lại hàm tạo đề
+                     return; 
+                 }
+            }
             alert(`Lỗi xác thực Google: ${listData.error.message}`);
             onBack(); return;
         }
@@ -1812,6 +1818,13 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
         const data = await response.json();
 
         if(data.error) {
+            // TỰ ĐỘNG ĐỔI KEY NẾU LỖI QUOTA HOẶC 429 (Lớp bảo vệ thứ 2)
+            if (data.error.message.toLowerCase().includes("quota") || data.error.code === 429) {
+                 if (keyIndex < API_KEYS.length - 1) {
+                     setKeyIndex(prev => prev + 1);
+                     return; 
+                 }
+            }
             alert(`Lỗi sinh đề thi: ${data.error.message}`);
             onBack(); return;
         }
@@ -1824,7 +1837,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
         setQuestionsData(finalPool);
       } catch (error) {
         console.error("Lỗi tạo đề:", error);
-        alert("Thầy AI đang bận rộn! Vui lòng ấn bắt đầu lại nhé.");
+        alert("Thầy AI đang bận rộn hoặc gặp lỗi kết nối! Vui lòng ấn bắt đầu lại nhé.");
         onBack();
       } finally {
         setLoadingData(false);
@@ -1833,7 +1846,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
 
     fetchGrammarFromAI();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [keyIndex]); // <-- QUAN TRỌNG: Lắng nghe sự thay đổi của keyIndex để tự động chạy lại
 
   useEffect(() => {
     if (selected !== null || loadingData || isGameOver || DIFFICULTY_LEVEL === 4) return;
@@ -2287,44 +2300,40 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord }) {
   const [manualInputs, setManualInputs] = useState({ phonetic: "", meaning: "", usage: "" });
 
   // HÀM LÕI: GỌI AI PHÂN BIỆT RÕ TỪ VỰNG VÀ NGỮ PHÁP
+  // HÀM LÕI: GỌI AI PHÂN BIỆT RÕ TỪ VỰNG VÀ NGỮ PHÁP (ĐÃ TÍCH HỢP TRẠM TỔNG)
   const fetchAI = async (wordInput, currentTab) => {
-      const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!API_KEY || API_KEY.includes("DÁN_MÃ")) throw new Error("No_API");
+      const API_KEY = getActiveKey();
+      if (!API_KEY) throw new Error("No_API");
+      
       const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
       const listData = await listRes.json();
+      
+      // BỘ CẢM BIẾN LỖI: Báo cáo Trạm Tổng để nhảy Key ngay nếu bị Quota
+      if (listData.error && (listData.error.message.toLowerCase().includes("quota") || listData.error.code === 429)) {
+          if (rotateKey()) return fetchAI(wordInput, currentTab); // Nhảy Key xong tự động gọi lại ngay lập tức
+          throw new Error("Hết toàn bộ Key dự phòng!");
+      }
+
       const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
       const flashModel = textModels.find(m => m.name.includes("1.5-flash")) || textModels.find(m => m.name.includes("flash"));
       const selectedModel = flashModel ? flashModel.name : textModels[0].name;
 
-      let prompt = "";
-      
-      // ĐÃ FIX: Nhận diện Tab Ngữ Pháp để đổi prompt phân tích cấu trúc
-      if (currentTab === "grammar") {
-          prompt = `Giải thích chủ điểm/cấu trúc ngữ pháp tiếng Anh: "${wordInput}".
-          Trả về CHỈ 1 OBJECT JSON ĐƠN GIẢN (Tuyệt đối không dùng markdown \`\`\`json):
-          {
-            "word": "${wordInput}",
-            "phonetic": "Công thức tổng quát (Ví dụ: S + suggest + V-ing)",
-            "meaning": "Cách sử dụng cốt lõi siêu ngắn gọn (Tối đa 10 từ)",
-            "usage": "1 câu ví dụ tiếng Anh kèm nghĩa tiếng Việt"
-          }`;
-      } else {
-          // ĐÃ FIX: Yêu cầu AI chèn luôn loại từ viết tắt vào từ vựng
-          prompt = `Phân tích từ/cụm từ tiếng Anh: "${wordInput}".
-          Trả về CHỈ 1 OBJECT JSON ĐƠN GIẢN (Tuyệt đối không dùng markdown \`\`\`json):
-          {
-            "word": "Từ chuẩn kèm (loại từ viết tắt). Ví dụ: 'brave (adj)', 'investigate (v)'",
-            "phonetic": "Phiên âm quốc tế",
-            "meaning": "Format bắt buộc: (Đồng nghĩa tiếng Anh) - Nghĩa tiếng Việt. Ví dụ: '(courageous) - dũng cảm'.",
-            "usage": "1 câu ví dụ tiếng Anh thực tế chứa từ này"
-          }`;
-      }
+      let prompt = currentTab === "grammar" 
+        ? `Giải thích chủ điểm/cấu trúc ngữ pháp tiếng Anh: "${wordInput}".\nTrả về CHỈ 1 OBJECT JSON ĐƠN GIẢN (Tuyệt đối không dùng markdown \`\`\`json):\n{"word": "${wordInput}", "phonetic": "Công thức tổng quát", "meaning": "Cách sử dụng cốt lõi siêu ngắn gọn (Tối đa 10 từ)", "usage": "1 câu ví dụ tiếng Anh kèm nghĩa tiếng Việt"}`
+        : `Phân tích từ/cụm từ tiếng Anh: "${wordInput}".\nTrả về CHỈ 1 OBJECT JSON ĐƠN GIẢN (Tuyệt đối không dùng markdown \`\`\`json):\n{"word": "Từ chuẩn kèm (loại từ viết tắt). Ví dụ: 'brave (adj)'", "phonetic": "Phiên âm quốc tế", "meaning": "Format bắt buộc: (Đồng nghĩa tiếng Anh) - Nghĩa tiếng Việt. Ví dụ: '(courageous) - dũng cảm'.", "usage": "1 câu ví dụ tiếng Anh thực tế chứa từ này"}`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${selectedModel}:generateContent?key=${API_KEY}`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
       });
       const data = await res.json();
+      
+      // Lớp bảo vệ thứ 2 đề phòng lỗi lúc đang gen Text
+      if (data.error && (data.error.message.toLowerCase().includes("quota") || data.error.code === 429)) {
+          if (rotateKey()) return fetchAI(wordInput, currentTab);
+          throw new Error("Hết toàn bộ Key dự phòng!");
+      }
+
       let rawText = data.candidates[0].content.parts[0].text;
       rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
       return JSON.parse(rawText);
