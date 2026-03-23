@@ -953,7 +953,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isM
             if (remaining > 3) insertIndex = current + 2 + Math.floor(Math.random() * (remaining - 1));
             
             // 2. LẤY LẠI CHÍNH CÂU VỪA SAI LÀM CÂU PHẠT (Học từ vựng thì sai đâu phạt đó mới nhớ lâu)
-            let penaltyItem = {...prev[randomIdx]};
+            let penaltyItem = {...newData[current]};
             // ĐÃ FIX TRÁNH SẬP WEB: Chỉ trộn đáp án nếu câu đó là trắc nghiệm (có options)
             if (penaltyItem.options) {
                 penaltyItem.options = shuffleArray([...penaltyItem.options]); 
