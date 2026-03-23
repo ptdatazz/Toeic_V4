@@ -2532,7 +2532,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
       return parsedArray; 
   };
 
-  // --- ĐÃ NÂNG CẤP: GỌI AI 1 LẦN DUY NHẤT DÙ LÀ 1 TỪ HAY 10 TỪ ---
+  // --- ĐÃ NÂNG CẤP: GỌI AI VÀ LƯU DATABASE 1 LẦN DUY NHẤT DÙ LÀ 1 TỪ HAY 10 TỪ ---
   const handleAddNew = async (e) => {
     e.preventDefault();
     const wordInput = newWord.trim();
@@ -2541,30 +2541,23 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
 
     try {
         if (wordInput.includes(',')) {
-            // Nếu người dùng nhập nhiều từ có dấu phẩy -> Gọi AI 1 lượt duy nhất!
+            // Nếu nhập sỉ -> Gọi AI dịch sỉ ra 1 mảng
             const aiWordsArray = await fetchAIBatch(wordInput, activeTab);
             
-            // Nhận kết quả 1 cục rồi mới tách ra cất vào Database
-            for (let wordObj of aiWordsArray) {
-                await onSaveWord(activeTab, wordObj);
-            }
+            // ĐÃ FIX: Nhồi cả mảng vào Database 1 lần duy nhất, không dùng vòng lặp nữa!
+            await onSaveWord(activeTab, aiWordsArray);
         } else {
             // Nếu chỉ nhập 1 từ -> Chạy bình thường
             const aiWordObj = await fetchAI(wordInput, activeTab);
-            
-            // ĐÃ XÓA DÒNG ÉP TÊN (aiWordObj.word = wordInput). 
-            // Giờ AI sửa lỗi chính tả hay thêm (noun), (v) thế nào sẽ lưu y hệt như thế!
             await onSaveWord(activeTab, aiWordObj);
         }
     } catch (error) {
         if(error.message === "No_API") alert("Bạn chưa cấu hình API Key để gọi AI!");
         else { 
             console.error("Lỗi AI:", error); 
-            // Nếu AI gặp sự cố, vẫn lưu thô các chữ vào Sổ tay để học viên tự sửa sau
+            // Nếu AI hỏng, lưu thô một mảng các từ vào sổ tay 1 lượt
             const rawWords = wordInput.split(',').map(w => w.trim()).filter(w => w);
-            for (let w of rawWords) {
-                 await onSaveWord(activeTab, w.toLowerCase());
-            }
+            await onSaveWord(activeTab, rawWords.map(w => w.toLowerCase())); 
         }
     }
     setIsAdding(false);
@@ -3099,40 +3092,50 @@ function App() {
 
 
 
-  // --- TÍNH NĂNG MỚI: LƯU TỪ VÀ ĐỊNH NGHĨA AI VÀO KHO CÁ NHÂN (ĐÃ FIX X-QUANG) ---
-  const handleSaveDifficultWord = async (type, wordData) => {
+  // --- TÍNH NĂNG MỚI: LƯU TỪ VÀ ĐỊNH NGHĨA AI (HỖ TRỢ LƯU SỈ 1 LÚC NHIỀU TỪ CHỐNG GHI ĐÈ) ---
+  const handleSaveDifficultWord = async (type, wordDataOrArray) => {
     if (!currentUser) return;
-    
-    const isFromAI = typeof wordData === "object";
-    const wordStr = isFromAI ? wordData.word : wordData;
     playSound("click");
 
     const normalizeWord = (w) => w ? w.toLowerCase().replace(/\s*\(.*?\)\s*/g, '').trim() : "";
-    const normStr = normalizeWord(wordStr);
+    
+    // ĐÃ FIX: Chuyển thành mảng để xử lý chung (dù truyền vào 1 từ hay 10 từ)
+    const wordsToProcess = Array.isArray(wordDataOrArray) ? wordDataOrArray : [wordDataOrArray];
 
     try {
         const currentState = globalStats[type] || {};
-        
-        // Càn quét và lọc sạch mọi biến thể (VD: xóa "waiter" để chuẩn bị nhét "waiter (n)" vào)
-        const cleanSaved = (currentState.savedWords || []).filter(w => normalizeWord(w) !== normStr);
-        const cleanWrong = (currentState.wrongWords || []).filter(w => normalizeWord(w) !== normStr);
-        const cleanMastered = (currentState.masteredWords || []).filter(w => normalizeWord(w) !== normStr);
-        let cleanObjs = currentState.addedWordsObj || [];
+        let cleanSaved = [...(currentState.savedWords || [])];
+        let cleanWrong = [...(currentState.wrongWords || [])];
+        let cleanMastered = [...(currentState.masteredWords || [])];
+        let cleanObjs = [...(currentState.addedWordsObj || [])];
 
-        // Đưa từ chuẩn mới nhất vào đúng Ô Vàng
-        cleanSaved.push(wordStr);
-        
-        if (isFromAI) {
-            cleanObjs = cleanObjs.filter(obj => normalizeWord(obj.word) !== normStr);
-            cleanObjs.push(wordData);
+        // Lắp từng từ vào mảng cục bộ trước
+        for (let wordData of wordsToProcess) {
+            const isFromAI = typeof wordData === "object";
+            const wordStr = isFromAI ? wordData.word : wordData;
+            const normStr = normalizeWord(wordStr);
+
+            // Càn quét và lọc sạch biến thể của từ này ở 3 Ô
+            cleanSaved = cleanSaved.filter(w => normalizeWord(w) !== normStr);
+            cleanWrong = cleanWrong.filter(w => normalizeWord(w) !== normStr);
+            cleanMastered = cleanMastered.filter(w => normalizeWord(w) !== normStr);
+
+            // Đưa từ chuẩn mới nhất vào đúng Ô Vàng
+            cleanSaved.push(wordStr);
+            
+            if (isFromAI) {
+                cleanObjs = cleanObjs.filter(obj => normalizeWord(obj.word) !== normStr);
+                cleanObjs.push(wordData);
+            }
         }
 
+        // Đẩy lên Firebase 1 lần duy nhất cho toàn bộ mảng
         const updatePayload = {
             [`${type}.savedWords`]: cleanSaved,
             [`${type}.wrongWords`]: cleanWrong,
-            [`${type}.masteredWords`]: cleanMastered
+            [`${type}.masteredWords`]: cleanMastered,
+            [`${type}.addedWordsObj`]: cleanObjs
         };
-        if (isFromAI) updatePayload[`${type}.addedWordsObj`] = cleanObjs;
 
         await updateDoc(doc(db, "users", currentUser.uid), updatePayload);
         
@@ -3142,9 +3145,9 @@ function App() {
                 ...newState[type], 
                 savedWords: cleanSaved, 
                 wrongWords: cleanWrong, 
-                masteredWords: cleanMastered 
+                masteredWords: cleanMastered,
+                addedWordsObj: cleanObjs
             };
-            if (isFromAI) newState[type].addedWordsObj = cleanObjs;
             return newState;
         });
     } catch(e) { console.error("Lỗi lưu từ:", e); }
