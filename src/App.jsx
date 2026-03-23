@@ -1714,6 +1714,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
   }, []);
 
   // 3. HÀM XỬ LÝ TRA TỪ ĐIỂN (ƯU TIÊN GOOGLE SHEET -> AI)
+  // 3. HÀM XỬ LÝ TRA TỪ ĐIỂN (ƯU TIÊN GOOGLE SHEET -> AI) ĐÃ TÍCH HỢP TRẠM TỔNG ĐỔI KEY
   const handleLookup = async (wordToLookup) => {
       const GEMINI_API_KEY = getActiveKey();
       const cleanWord = wordToLookup.trim().toLowerCase().replace(/[^a-z-]/g, '');
@@ -1736,11 +1737,17 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
       try {
           const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
           const listData = await listRes.json();
+
+          // BỘ CẢM BIẾN LỖI: Báo cáo Trạm Tổng để nhảy Key ngay nếu bị Quota
+          if (listData.error && (listData.error.message.toLowerCase().includes("quota") || listData.error.code === 429)) {
+              if (rotateKey()) return handleLookup(wordToLookup); // Nhảy Key xong tự động tra lại từ đầu
+              throw new Error("Hết toàn bộ Key dự phòng!");
+          }
+
           const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
           const flashModel = textModels.find(m => m.name.includes("1.5-flash")) || textModels.find(m => m.name.includes("flash"));
           const selectedModel = flashModel ? flashModel.name : textModels[0].name;
 
-          // ĐÃ FIX: Yêu cầu AI chèn luôn loại từ viết tắt vào từ vựng
           const prompt = `Phân tích từ/cụm từ tiếng Anh: "${cleanWord}". (Lưu ý: Nếu từ bị dính chữ do lỗi bôi đen, ví dụ 'takeeffect', hãy tự động sửa thành 'take effect' để phân tích).
           Trả về CHỈ 1 OBJECT JSON ĐƠN GIẢN (Tuyệt đối không dùng markdown \`\`\`json):
           {
@@ -1755,12 +1762,20 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
               body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
           });
           const data = await res.json();
+
+          // Lớp bảo vệ thứ 2 đề phòng lỗi lúc đang gen Text
+          if (data.error && (data.error.message.toLowerCase().includes("quota") || data.error.code === 429)) {
+              if (rotateKey()) return handleLookup(wordToLookup);
+              throw new Error("Hết toàn bộ Key dự phòng!");
+          }
+
           let rawText = data.candidates[0].content.parts[0].text;
           rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
           const aiWordObj = JSON.parse(rawText);
           
           setDictModal({ word: cleanWord, status: 'found_ai', data: aiWordObj });
       } catch (error) {
+          console.error("Lỗi Tra Từ AI:", error);
           setDictModal({ word: cleanWord, status: 'error', data: null });
       }
   };
@@ -2453,6 +2468,10 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord }) {
     setIsAdding(true);
     try {
         const aiWordObj = await fetchAI(wordInput, activeTab);
+        
+        // ĐÃ FIX: Ép AI giữ nguyên tên gốc của từ bác vừa gõ
+        aiWordObj.word = wordInput; 
+        
         onSaveWord(activeTab, aiWordObj);
     } catch (error) {
         if(error.message === "No_API") alert("Bạn chưa cấu hình API Key để gọi AI!");
@@ -2467,6 +2486,10 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord }) {
       playSound("click");
       try {
           const aiWordObj = await fetchAI(wordStr, activeTab);
+          
+          // ĐÃ FIX: Ép AI giữ nguyên tên gốc của thẻ (tag) để lúc mở lên Sổ tay tìm thấy 100%
+          aiWordObj.word = wordStr; 
+          
           onSaveWord(activeTab, aiWordObj);
           setWordDetailModal({ wordStr, listType: wordDetailModal.listType, detail: aiWordObj });
       } catch (error) { alert("Lỗi khi cập nhật AI, vui lòng thử lại sau."); }
