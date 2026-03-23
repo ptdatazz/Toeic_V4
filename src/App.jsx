@@ -2414,7 +2414,50 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
   const [isEditingManual, setIsEditingManual] = useState(false);
   const [manualInputs, setManualInputs] = useState({ phonetic: "", meaning: "", usage: "" });
 
-  // --- TÍNH NĂNG MỚI: HÀM LÕI 2 "DỊCH SỈ" (BATCH PROCESSING) TIẾT KIỆM API ---
+  /// HÀM LÕI 1: GỌI AI DỊCH LẺ 1 TỪ (ĐÃ ÉP BẮT BUỘC TRẢ VỀ LOẠI TỪ)
+  const fetchAI = async (wordInput, currentTab) => {
+      const API_KEY = getActiveKey();
+      if (!API_KEY) throw new Error("No_API");
+      
+      if (!window.globalCachedModel) {
+          const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
+          const listData = await listRes.json();
+          const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
+          const flashModel = textModels.find(m => m.name.includes("flash"));
+          window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
+      }
+
+      let prompt = currentTab === "grammar" 
+        ? `Giải thích cấu trúc ngữ pháp: "${wordInput}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON (Không giải thích thêm):\n{"word": "${wordInput}", "phonetic": "Công thức", "meaning": "Cách sử dụng cốt lõi", "usage": "1 ví dụ"}`
+        : `Phân tích cụm từ tiếng Anh: "${wordInput}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON (Không giải thích thêm):\n{"word": "Từ vựng (BẮT BUỘC kèm từ loại, VD: apple (n), run (v))", "phonetic": "Phiên âm", "meaning": "(Đồng nghĩa) - Nghĩa.", "usage": "1 ví dụ"}`;
+
+      const requestBody = { contents: [{ parts: [{ text: prompt }] }] };
+      if (window.globalCachedModel.includes("1.5")) {
+          requestBody.generationConfig = { response_mime_type: "application/json" };
+      }
+
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${API_KEY}`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody)
+      });
+      const data = await res.json();
+      
+      if (data.error && (data.error.message.toLowerCase().includes("quota") || data.error.message.toLowerCase().includes("expired") || data.error.code === 429)) {
+          window.globalCachedModel = null;
+          if (rotateKey()) {
+              await new Promise(r => setTimeout(r, 1500)); 
+              return fetchAI(wordInput, currentTab);
+          }
+          throw new Error("Hết toàn bộ Key dự phòng!");
+      }
+
+      let rawText = data.candidates[0].content.parts[0].text;
+      const jsonMatch = rawText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+      if (jsonMatch) rawText = jsonMatch[0];
+      return JSON.parse(rawText);
+  };
+
+  // --- TÍNH NĂNG MỚI: HÀM LÕI 2 "DỊCH SỈ" (ĐÃ ÉP BẮT BUỘC TRẢ VỀ LOẠI TỪ) ---
   const fetchAIBatch = async (wordsString, currentTab) => {
       const API_KEY = getActiveKey();
       if (!API_KEY) throw new Error("No_API");
@@ -2427,14 +2470,18 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
           window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
       }
 
-      // ÉP AI TRẢ VỀ 1 MẢNG BỌC NGOÀI [...] THAY VÌ 1 OBJECT {...}
       let prompt = currentTab === "grammar"
-        ? `Giải thích các cấu trúc ngữ pháp sau: "${wordsString}".\nTrả về CHỈ 1 MẢNG JSON (Tuyệt đối không dùng markdown \`\`\`json):\n[{"word": "cấu trúc 1", "phonetic": "Công thức 1", "meaning": "Cách dùng 1", "usage": "Ví dụ 1"}, {"word": "cấu trúc 2", "phonetic": "Công thức 2", "meaning": "Cách dùng 2", "usage": "Ví dụ 2"}]`
-        : `Phân tích các từ/cụm từ tiếng Anh sau: "${wordsString}".\nTrả về CHỈ 1 MẢNG JSON (Tuyệt đối không dùng markdown \`\`\`json):\n[{"word": "Từ chuẩn 1 (loại từ)", "phonetic": "Phiên âm 1", "meaning": "(Đồng nghĩa 1) - Nghĩa 1", "usage": "Ví dụ 1"}, {"word": "Từ chuẩn 2", "phonetic": "Phiên âm 2", "meaning": "Nghĩa 2", "usage": "Ví dụ 2"}]`;
+        ? `Giải thích các cấu trúc ngữ pháp sau: "${wordsString}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "cấu trúc 1", "phonetic": "Công thức", "meaning": "Nghĩa", "usage": "Ví dụ"}]`
+        : `Phân tích các từ sau: "${wordsString}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "Từ vựng (BẮT BUỘC kèm từ loại, VD: apple (n), run (v))", "phonetic": "Phiên âm", "meaning": "Nghĩa", "usage": "Ví dụ"}]`;
+
+      const requestBody = { contents: [{ parts: [{ text: prompt }] }] };
+      if (window.globalCachedModel.includes("1.5")) {
+          requestBody.generationConfig = { response_mime_type: "application/json" };
+      }
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${API_KEY}`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+          body: JSON.stringify(requestBody)
       });
       const data = await res.json();
 
@@ -2448,8 +2495,9 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
       }
 
       let rawText = data.candidates[0].content.parts[0].text;
-      rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-      return JSON.parse(rawText); // Kết quả trả về sẽ là một Array [...]
+      const jsonMatch = rawText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+      if (jsonMatch) rawText = jsonMatch[0];
+      return JSON.parse(rawText); 
   };
 
   // --- ĐÃ NÂNG CẤP: GỌI AI 1 LẦN DUY NHẤT DÙ LÀ 1 TỪ HAY 10 TỪ ---
@@ -2471,7 +2519,9 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
         } else {
             // Nếu chỉ nhập 1 từ -> Chạy bình thường
             const aiWordObj = await fetchAI(wordInput, activeTab);
-            aiWordObj.word = wordInput; 
+            
+            // ĐÃ XÓA DÒNG ÉP TÊN (aiWordObj.word = wordInput). 
+            // Giờ AI sửa lỗi chính tả hay thêm (noun), (v) thế nào sẽ lưu y hệt như thế!
             await onSaveWord(activeTab, aiWordObj);
         }
     } catch (error) {
@@ -2642,13 +2692,15 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
 
       <button onClick={() => { onBack(); }} style={{ width: "100%", padding: "12px", marginTop: "10px", fontSize: "16px", backgroundColor: "#e0e0e0", color: "#555", borderRadius: "10px", border: "none", cursor: "pointer", fontWeight: "bold" }}>⬅ Trở về sảnh</button>
 
-      {/* 1. OVERLAY MODAL: XEM TẤT CẢ (CÓ THANH CUỘN) */}
+      {/* 1. OVERLAY MODAL: XEM TẤT CẢ (CÓ THANH CUỘN) - ĐÃ FIX REALTIME */}
       {viewAllModal && (
         <div onClick={() => { playSound("click"); setViewAllModal(null); }} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px", boxSizing: "border-box", cursor: "pointer" }}>
             <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: "white", width: "100%", maxWidth: "400px", borderRadius: "15px", padding: "20px", maxHeight: "80vh", display: "flex", flexDirection: "column", animation: "popIn 0.3s", boxShadow: "0 10px 30px rgba(0,0,0,0.2)", cursor: "default" }}>
-              <h3 style={{ color: viewAllModal.color, marginTop: 0, borderBottom: "1px solid #eee", paddingBottom: "10px" }}>{viewAllModal.title} ({viewAllModal.words.length})</h3>
+              <h3 style={{ color: viewAllModal.color, marginTop: 0, borderBottom: "1px solid #eee", paddingBottom: "10px" }}>
+                  {viewAllModal.title} ({(globalStats[activeTab][viewAllModal.listType] || []).length})
+              </h3>
                 <div style={{ overflowY: "auto", flex: 1, padding: "10px 0" }}>
-                   {renderTags(viewAllModal.words, viewAllModal.color, viewAllModal.bgColor, viewAllModal.listType, null)}
+                   {renderTags(globalStats[activeTab][viewAllModal.listType] || [], viewAllModal.color, viewAllModal.bgColor, viewAllModal.listType, null)}
                 </div>
                 <button onClick={() => { playSound("click"); setViewAllModal(null); }} style={{ width: "100%", padding: "12px", marginTop: "15px", fontSize: "16px", backgroundColor: "#e0e0e0", color: "#333", borderRadius: "8px", border: "none", cursor: "pointer", fontWeight: "bold" }}>Đóng</button>
             </div>
@@ -2934,28 +2986,46 @@ function App() {
     setIsMusicPlaying(false);
   };
 
-  // --- TRUYỀN THÊM TỪ/CÂU HỎI VÀO CƠ SỞ DỮ LIỆU ---
-  // --- TRUYỀN THÊM TỪ/CÂU HỎI VÀO CƠ SỞ DỮ LIỆU ---
+  // --- TRUYỀN THÊM TỪ/CÂU HỎI VÀO CƠ SỞ DỮ LIỆU (ĐÃ FIX: X-QUANG CHỐNG TRÙNG) ---
   const updateGlobalStats = async (type, isCorrect, itemValue = null) => {
     if (!currentUser) return;
     
     const newCorrect = globalStats[type].correct + (isCorrect ? 1 : 0);
     const newTotal = globalStats[type].total + 1;
+    const currentState = globalStats[type] || {};
+
+    // MÁY QUÉT X-QUANG: Xóa chữ hoa, xóa khoảng trắng thừa, lột sạch các tag loại từ (n), (v)...
+    const normalizeWord = (w) => w ? w.toLowerCase().replace(/\s*\(.*?\)\s*/g, '').trim() : "";
 
     const updatePayload = {
       [`${type}.correct`]: newCorrect,
       [`${type}.total`]: newTotal
     };
 
+    let newSaved = currentState.savedWords || [];
+    let newWrong = currentState.wrongWords || [];
+    let newMastered = currentState.masteredWords || [];
+    let shouldUpdateArrays = false;
+
     if (itemValue) {
       updatePayload[`${type}.learnedWords`] = arrayUnion(itemValue);
 
-      // ĐÃ FIX: Chỉ tự động lưu từ làm sai vào Sổ tay nếu là Từ vựng/Colloc. 
       if (!isCorrect && type !== "grammar") {
-          updatePayload[`${type}.wrongWords`] = arrayUnion(itemValue);
-          // CHỐNG TRÙNG: Khi làm sai (vào Ô Đỏ), xóa sạch nó khỏi Vàng và Xanh
-          updatePayload[`${type}.savedWords`] = arrayRemove(itemValue);
-          updatePayload[`${type}.masteredWords`] = arrayRemove(itemValue);
+          const normStr = normalizeWord(itemValue);
+          
+          // Càn quét và xóa mọi biến thể của từ này ở CẢ 3 Ô
+          newSaved = newSaved.filter(w => normalizeWord(w) !== normStr);
+          newWrong = newWrong.filter(w => normalizeWord(w) !== normStr);
+          newMastered = newMastered.filter(w => normalizeWord(w) !== normStr);
+
+          // Chỉ nhét duy nhất 1 từ chuẩn vào Ô Đỏ
+          newWrong.push(itemValue);
+          
+          // Ghi đè lại toàn bộ mảng sạch lên Firebase thay vì dùng lệnh arrayRemove (Bị ngu khi khác dấu ngoặc)
+          updatePayload[`${type}.savedWords`] = newSaved;
+          updatePayload[`${type}.wrongWords`] = newWrong;
+          updatePayload[`${type}.masteredWords`] = newMastered;
+          shouldUpdateArrays = true;
       }
     }
 
@@ -2973,14 +3043,10 @@ function App() {
            newState[type].learnedWords = [...currentWords, itemValue];
         }
         
-        if (!isCorrect && type !== "grammar") {
-           const currentWrong = newState[type].wrongWords || [];
-           if (!currentWrong.includes(itemValue)) {
-               newState[type].wrongWords = [...currentWrong, itemValue];
-           }
-           // CHỐNG TRÙNG (XÓA TRÊN GIAO DIỆN):
-           if (newState[type].savedWords) newState[type].savedWords = newState[type].savedWords.filter(w => w !== itemValue);
-           if (newState[type].masteredWords) newState[type].masteredWords = newState[type].masteredWords.filter(w => w !== itemValue);
+        if (shouldUpdateArrays) {
+            newState[type].savedWords = newSaved;
+            newState[type].wrongWords = newWrong;
+            newState[type].masteredWords = newMastered;
         }
       }
       return newState;
@@ -3001,82 +3067,94 @@ function App() {
 
 
 
-  // --- TÍNH NĂNG MỚI: LƯU TỪ VÀ ĐỊNH NGHĨA AI VÀO KHO CÁ NHÂN ---
+  // --- TÍNH NĂNG MỚI: LƯU TỪ VÀ ĐỊNH NGHĨA AI VÀO KHO CÁ NHÂN (ĐÃ FIX X-QUANG) ---
   const handleSaveDifficultWord = async (type, wordData) => {
     if (!currentUser) return;
     
     const isFromAI = typeof wordData === "object";
     const wordStr = isFromAI ? wordData.word : wordData;
+    playSound("click");
+
+    const normalizeWord = (w) => w ? w.toLowerCase().replace(/\s*\(.*?\)\s*/g, '').trim() : "";
+    const normStr = normalizeWord(wordStr);
 
     try {
-      playSound("click");
-      const updatePayload = { 
-          [`${type}.savedWords`]: arrayUnion(wordStr),
-          // CHỐNG TRÙNG: Khi lưu vào Ô Vàng, tự động xóa nó khỏi Ô Đỏ và Ô Xanh
-          [`${type}.wrongWords`]: arrayRemove(wordStr),
-          [`${type}.masteredWords`]: arrayRemove(wordStr)
-      };
-      
-      if (isFromAI) { updatePayload[`${type}.addedWordsObj`] = arrayUnion(wordData); }
+        const currentState = globalStats[type] || {};
+        
+        // Càn quét và lọc sạch mọi biến thể (VD: xóa "waiter" để chuẩn bị nhét "waiter (n)" vào)
+        const cleanSaved = (currentState.savedWords || []).filter(w => normalizeWord(w) !== normStr);
+        const cleanWrong = (currentState.wrongWords || []).filter(w => normalizeWord(w) !== normStr);
+        const cleanMastered = (currentState.masteredWords || []).filter(w => normalizeWord(w) !== normStr);
+        let cleanObjs = currentState.addedWordsObj || [];
 
-      await updateDoc(doc(db, "users", currentUser.uid), updatePayload);
-      
-      setGlobalStats(prev => {
-        const newState = { ...prev };
-        if (!newState[type].savedWords) newState[type].savedWords = [];
-        if (!newState[type].addedWordsObj) newState[type].addedWordsObj = [];
-
-        if (!newState[type].savedWords.includes(wordStr)) {
-            newState[type].savedWords = [...newState[type].savedWords, wordStr];
-        }
+        // Đưa từ chuẩn mới nhất vào đúng Ô Vàng
+        cleanSaved.push(wordStr);
+        
         if (isFromAI) {
-            newState[type].addedWordsObj = [...newState[type].addedWordsObj, wordData];
+            cleanObjs = cleanObjs.filter(obj => normalizeWord(obj.word) !== normStr);
+            cleanObjs.push(wordData);
         }
+
+        const updatePayload = {
+            [`${type}.savedWords`]: cleanSaved,
+            [`${type}.wrongWords`]: cleanWrong,
+            [`${type}.masteredWords`]: cleanMastered
+        };
+        if (isFromAI) updatePayload[`${type}.addedWordsObj`] = cleanObjs;
+
+        await updateDoc(doc(db, "users", currentUser.uid), updatePayload);
         
-        // CHỐNG TRÙNG (XÓA TRÊN GIAO DIỆN)
-        if (newState[type].wrongWords) newState[type].wrongWords = newState[type].wrongWords.filter(w => w !== wordStr);
-        if (newState[type].masteredWords) newState[type].masteredWords = newState[type].masteredWords.filter(w => w !== wordStr);
-        
-        return newState;
-      });
+        setGlobalStats(prev => {
+            const newState = { ...prev };
+            newState[type] = { 
+                ...newState[type], 
+                savedWords: cleanSaved, 
+                wrongWords: cleanWrong, 
+                masteredWords: cleanMastered 
+            };
+            if (isFromAI) newState[type].addedWordsObj = cleanObjs;
+            return newState;
+        });
     } catch(e) { console.error("Lỗi lưu từ:", e); }
   };
 
-  // Line ~1144
-// --- TÍNH NĂNG MỚI: DI CHUYỂN TỪ GIỮA CÁC DANH SÁCH (CHỐNG TRÙNG LẶP TUYỆT ĐỐI) ---
+  // --- TÍNH NĂNG MỚI: DI CHUYỂN TỪ GIỮA CÁC DANH SÁCH (ĐÃ FIX X-QUANG CHỐNG TRÙNG) ---
   const handleMoveWord = async (type, fromList, toList, wordToMove) => {
       if (!currentUser) return;
       playSound("click");
+      
+      const normalizeWord = (w) => w ? w.toLowerCase().replace(/\s*\(.*?\)\s*/g, '').trim() : "";
+      const normStr = normalizeWord(wordToMove);
+
       try {
-          // Xác định danh sách sẽ chuyển đến, và lấy ra 2 danh sách còn lại để tiến hành "thanh trừng"
-          const allLists = ["savedWords", "wrongWords", "masteredWords"];
-          const listsToRemove = allLists.filter(l => l !== toList);
+          const currentState = globalStats[type] || {};
+          
+          // Làm sạch hoàn toàn 3 mảng
+          const cleanSaved = (currentState.savedWords || []).filter(w => normalizeWord(w) !== normStr);
+          const cleanWrong = (currentState.wrongWords || []).filter(w => normalizeWord(w) !== normStr);
+          const cleanMastered = (currentState.masteredWords || []).filter(w => normalizeWord(w) !== normStr);
 
-          // Firestore: Ép thêm vào 1 chỗ và Xóa sạch ở 2 chỗ kia
-          await updateDoc(doc(db, "users", currentUser.uid), {
-              [`${type}.${listsToRemove[0]}`]: arrayRemove(wordToMove),
-              [`${type}.${listsToRemove[1]}`]: arrayRemove(wordToMove),
-              [`${type}.${toList}`]: arrayUnion(wordToMove)
-          });
+          // Ép nó vào mảng đích
+          if (toList === "savedWords") cleanSaved.push(wordToMove);
+          if (toList === "wrongWords") cleanWrong.push(wordToMove);
+          if (toList === "masteredWords") cleanMastered.push(wordToMove);
 
-          // Local State update
+          const updatePayload = {
+              [`${type}.savedWords`]: cleanSaved,
+              [`${type}.wrongWords`]: cleanWrong,
+              [`${type}.masteredWords`]: cleanMastered
+          };
+
+          await updateDoc(doc(db, "users", currentUser.uid), updatePayload);
+
           setGlobalStats(prev => {
               const newState = { ...prev };
-              if (!newState[type]) newState[type] = {};
-
-              // Xóa khỏi 2 danh sách không liên quan
-              listsToRemove.forEach(listName => {
-                  if (newState[type][listName]) {
-                      newState[type][listName] = newState[type][listName].filter(w => w !== wordToMove);
-                  }
-              });
-
-              // Thêm vào danh sách đích
-              if (!newState[type][toList]) newState[type][toList] = [];
-              if (!newState[type][toList].includes(wordToMove)) {
-                  newState[type][toList] = [...newState[type][toList], wordToMove];
-              }
-
+              newState[type] = { 
+                  ...newState[type], 
+                  savedWords: cleanSaved, 
+                  wrongWords: cleanWrong, 
+                  masteredWords: cleanMastered 
+              };
               return newState;
           });
       } catch (error) {
