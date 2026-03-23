@@ -1694,25 +1694,24 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
     fetchVocabForDict();
   }, []);
 
-  // 2. HÀM QUÉT CHỮ BÔI ĐEN BẰNG CHUỘT/CẢM ỨNG (ĐÃ FIX CHO MOBILE)
+  // 2. HÀM QUÉT CHỮ BÔI ĐEN BẰNG CHUỘT/CẢM ỨNG (ĐÃ GIẢN LƯỢC CHO FIXED BAR)
   const handleSelection = () => {
+      // Dùng setTimeout nhỏ để đợi OS xử lý xong Selection
       setTimeout(() => { 
           const selection = window.getSelection();
+          // Nếu có bôi đen và không phải là click chuột rỗng
           if (selection && !selection.isCollapsed) {
               const text = selection.toString().trim();
+              // Giới hạn độ dài để tránh AI bị ngợp (dưới 40 từ)
               if (text && text.split(/\s+/).length <= 40 && text.length < 300) {
-                  const range = selection.getRangeAt(0);
-                  const rect = range.getBoundingClientRect();
-                  
-                  setTooltipPos({
-                      // ĐÃ FIX: Dời tọa độ xuống bên DƯỚI đoạn text thay vì ở trên
-                      top: rect.bottom + 12, 
-                      left: rect.left + rect.width / 2 
-                  });
+                  // ĐÃ FIX: Không cần tính tọa độ rect nữa.
+                  // Chỉ cần set true để bật thanh công cụ cố định ở dưới.
+                  setTooltipPos(true); 
                   setSelectedWord(text);
                   return;
               }
           }
+          // Nếu không bôi đen gì thì tắt thanh công cụ
           setSelectedWord("");
           setTooltipPos(null);
       }, 50);
@@ -2195,48 +2194,55 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
   return (
     <div className="container" style={{ maxWidth: TOEIC_PART !== "part5" ? "600px" : "450px", position: "relative" }}>
 
-      {/* TOOLTIP HIỂN THỊ NGAY TRÊN CHỮ BÔI ĐEN GIỐNG ĐIỆN THOẠI (ĐÃ FIX UX) */}
+      {/* --- THANH CÔNG CỤ XỬ LÝ CHỮ CỐ ĐỊNH Ở ĐÁY MÀN HÌNH (FIXED BOTTOM BAR) --- */}
       {selectedWord && tooltipPos && !dictModal && (
           <div style={{
               position: "fixed",
-              top: `${tooltipPos.top}px`,
-              left: `${tooltipPos.left}px`,
-              // ĐÃ FIX: Không hất lên trên (-100%) nữa, để nó trỏ xuống dưới (0)
-              transform: "translate(-50%, 0)", 
-              backgroundColor: "#2c3e50",
+              // ĐÃ FIX: Cố định ở đáy, ngay phía trên vùng nút bấm câu tiếp theo
+              bottom: "80px", 
+              left: "50%",
+              transform: "translateX(-50%)",
+              // Giao diện dạng thanh ngang rộng rãi (medium size)
+              width: "92%",
+              maxWidth: "450px",
+              backgroundColor: "#2c3e50", // Màu xanh đen đậm sang trọng
               color: "white",
-              // ĐÃ FIX: Tăng kích thước nút bấm để dễ chạm trên điện thoại
-              padding: "10px 16px",
-              borderRadius: "10px",
+              // Tăng padding để ngón tay dễ chạm trên điện thoại
+              padding: "12px 18px",
+              borderRadius: "15px", // Bo góc mềm mại
               display: "flex",
-              gap: "15px",
-              zIndex: 1000,
-              boxShadow: "0 6px 20px rgba(0,0,0,0.3)",
-              animation: "popIn 0.2s ease-out",
-              whiteSpace: "nowrap"
+              justifyContent: "space-around", // Chia đều các nút
+              alignItems: "center",
+              zIndex: 1000, // Luôn nằm trên cùng
+              boxShadow: "0 -4px 20px rgba(0,0,0,0.2)", // Đổ bóng ngược lên trên
+              animation: "slideUp 0.3s ease-out", // Hiệu ứng trượt từ dưới lên
+              whiteSpace: "nowrap",
+              border: "1px solid rgba(255,255,255,0.1)"
           }}>
-              <span onClick={() => handleLookup(selectedWord)} style={{ cursor: "pointer", fontWeight: "bold", fontSize: "15px", display: "flex", alignItems: "center", gap: "6px" }}>
-                  🔍 Dịch
-              </span>
-              <div style={{ width: "1px", backgroundColor: "#546e7a" }}></div>
-              
-              {/* NÚT LƯU VÀO TỪ VỰNG */}
-              <span onClick={() => handleQuickSave("vocab", selectedWord)} style={{ cursor: "pointer", fontWeight: "bold", fontSize: "15px", display: "flex", alignItems: "center", gap: "6px", color: "#4CAF50" }}>
-                  🔖 + Từ
+              {/* NÚT 1: TRA ĐIỂN */}
+              <span onClick={() => handleLookup(selectedWord)} style={{ cursor: "pointer", fontWeight: "bold", fontSize: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                  🔍 Tra từ
               </span>
               
-              <div style={{ width: "1px", backgroundColor: "#546e7a" }}></div>
+              {/* Vạch phân cách */}
+              <div style={{ width: "1px", height: "20px", backgroundColor: "rgba(255,255,255,0.2)" }}></div>
               
-              {/* NÚT LƯU VÀO NGỮ PHÁP */}
-              <span onClick={() => handleQuickSave("grammar", selectedWord)} style={{ cursor: "pointer", fontWeight: "bold", fontSize: "15px", display: "flex", alignItems: "center", gap: "6px", color: "#FF9800" }}>
+              {/* NÚT 2: LƯU TỪ VỰNG */}
+              <span onClick={() => handleQuickSave("vocab", selectedWord)} style={{ cursor: "pointer", fontWeight: "bold", fontSize: "16px", display: "flex", alignItems: "center", gap: "8px", color: "#81c784" }}>
+                  🔖 + Từ mới
+              </span>
+              
+              <div style={{ width: "1px", height: "20px", backgroundColor: "rgba(255,255,255,0.2)" }}></div>
+              
+              {/* NÚT 3: LƯU CẤU TRÚC */}
+              <span onClick={() => handleQuickSave("grammar", selectedWord)} style={{ cursor: "pointer", fontWeight: "bold", fontSize: "16px", display: "flex", alignItems: "center", gap: "8px", color: "#ffb74d" }}>
                   📐 + Cấu trúc
               </span>
-              
-              {/* ĐÃ FIX: Lật ngược mũi tên tam giác để nó chỉ lên trên */}
-              <div style={{ position: "absolute", top: "-6px", left: "50%", transform: "translateX(-50%)", borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderBottom: "8px solid #2c3e50" }}></div>
+
+              {/* ĐÃ XÓA: Phần mũi tên tam giác trỏ vào chữ (không cần thiết nữa) */}
           </div>
       )}
-      
+
       {/* MODAL KẾT QUẢ TRA TỪ ĐIỂN TÍCH HỢP SỔ TAY */}
       {dictModal && (
         <div onClick={() => setDictModal(null)} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.7)", zIndex: 1100, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px", boxSizing: "border-box", cursor: "pointer" }}>
