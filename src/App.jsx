@@ -700,20 +700,28 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isM
           let valid = false;
           let finalKeyword = "";
 
+          // --- BỘ LỌC X-QUANG: Lột sạch (n), (v), (adj) trước khi xếp chữ ---
+          const getCleanStr = (raw) => raw.replace(/\s*\(.*?\)\s*/g, '').trim();
+
           for (let targetKeyword of keywordsToTry) {
               for (let attempt = 0; attempt < 20; attempt++) {
                   bossWords = [];
                   valid = true;
                   for (let i = 0; i < targetKeyword.length; i++) {
                       const char = targetKeyword[i].toLowerCase();
-                      let candidates = availableWords.filter(item => item.word && item.word.toLowerCase().includes(char));
+                      
+                      // CHỈ SO SÁNH VỚI CHỮ ĐÃ LỘT SẠCH TAG
+                      let candidates = availableWords.filter(item => item.word && getCleanStr(item.word).toLowerCase().includes(char));
                       if (candidates.length === 0) { valid = false; break; }
                       
                       let picked = shuffleArray(candidates).find(c => !bossWords.some(bw => bw.word === c.word));
                       if (!picked) { valid = false; break; }
                       
-                      let charIndex = picked.word.toLowerCase().indexOf(char);
-                      bossWords.push({ ...picked, alignIdx: charIndex });
+                      let cleanWordText = getCleanStr(picked.word);
+                      let charIndex = cleanWordText.toLowerCase().indexOf(char);
+                      
+                      // Lưu thêm trường cleanWord để dùng cho bản đồ
+                      bossWords.push({ ...picked, cleanWord: cleanWordText, alignIdx: charIndex });
                   }
                   if (valid && bossWords.length === targetKeyword.length) break;
               }
@@ -1258,7 +1266,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isM
                  const userInput = (crosswordInputs[idx] || "").toLowerCase();
                  const maxShift = Math.max(...currentQ.words.map(w => w.alignIdx));
                  const marginBoxes = maxShift - item.alignIdx; 
-                 const isCorrectWord = userInput.trim() === item.word.toLowerCase().trim();
+                 const isCorrectWord = userInput.trim() === item.cleanWord.toLowerCase().trim();
 
                  return (
                      <div key={`grid-${idx}`} style={{ 
@@ -1268,7 +1276,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isM
                          marginTop: !currentQ.isVerticalKeyword ? `${marginBoxes * 32}px` : "0",
                          alignSelf: "flex-start" 
                      }}>
-                         {item.word.split('').map((char, charIdx) => {
+                         {item.cleanWord.split('').map((char, charIdx) => {
                              const isKeywordChar = charIdx === item.alignIdx; 
                              const userChar = userInput[charIdx] || "";
                              
@@ -1295,7 +1303,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isM
           {/* KHUNG NHẬP LIỆU CÂU HỎI */}
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
              {currentQ.words.map((item, idx) => {
-                 const isCorrect = (crosswordInputs[idx] || "").toLowerCase().trim() === item.word.toLowerCase().trim();
+                 const isCorrect = (crosswordInputs[idx] || "").toLowerCase().trim() === item.cleanWord.toLowerCase().trim();
                  return (
                      <div key={`input-${idx}`} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px", backgroundColor: isCorrect ? "#e8f5e9" : "#fff", borderRadius: "8px", border: "1px solid #ddd" }}>
                          <div style={{ width: "30px", height: "30px", borderRadius: "50%", backgroundColor: "#2196F3", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" }}>{idx + 1}</div>
@@ -1310,18 +1318,18 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isM
                                      setCrosswordInputs({...crosswordInputs, [idx]: val});
                                      
                                      // CƠ CHẾ AUTO-FOCUS: Gõ đúng tự nhảy sang ô chưa hoàn thành
-                                     if (val.toLowerCase().trim() === item.word.toLowerCase().trim()) {
+                                     if (val.toLowerCase().trim() === item.cleanWord.toLowerCase().trim()) {
                                          let nextIdx = -1;
                                          // Tìm ô trống ở phía dưới
                                          for (let i = idx + 1; i < currentQ.words.length; i++) {
-                                             const targetWord = currentQ.words[i].word.toLowerCase().trim();
+                                             const targetWord = currentQ.words[i].cleanWord.toLowerCase().trim();
                                              const curVal = (crosswordInputs[i] || "").toLowerCase().trim();
                                              if (curVal !== targetWord) { nextIdx = i; break; }
                                          }
                                          // Nếu bên dưới hết ô trống, vòng lên tìm lại phía trên
                                          if (nextIdx === -1) {
                                              for (let i = 0; i < idx; i++) {
-                                                 const targetWord = currentQ.words[i].word.toLowerCase().trim();
+                                                 const targetWord = currentQ.words[i].cleanWord.toLowerCase().trim();
                                                  const curVal = (crosswordInputs[i] || "").toLowerCase().trim();
                                                  if (curVal !== targetWord) { nextIdx = i; break; }
                                              }
@@ -1333,8 +1341,8 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isM
                                      }
                                  }}
                                  disabled={isCorrect}
-                                 maxLength={item.word.length}
-                                 placeholder={`${item.word.length} chữ cái...`}
+                                 maxLength={item.cleanWord.length}
+                                 placeholder={`${item.cleanWord.length} chữ cái...`}
                                  style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #ccc", textTransform: "uppercase", outline: "none", backgroundColor: isCorrect ? "#c8e6c9" : "#fff", fontWeight: "bold" }}
                              />
                          </div>
@@ -1345,7 +1353,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isM
           </div>
 
           {/* HIỆU ỨNG TỪ KHÓA KHI HOÀN THÀNH BẢN ĐỒ */}
-          {currentQ.words.every((item, idx) => (crosswordInputs[idx] || "").toLowerCase().trim() === item.word.toLowerCase().trim()) ? (
+          {currentQ.words.every((item, idx) => (crosswordInputs[idx] || "").toLowerCase().trim() === item.cleanWord.toLowerCase().trim()) ? (
              <div style={{ marginTop: "25px", textAlign: "center", animation: "popIn 0.5s" }}>
                  <h3 style={{ color: "#FF9800", marginBottom: "15px", fontSize: "18px" }}>Nhập Từ Khóa Bí Mật:</h3>
                  <input 
@@ -1686,7 +1694,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
     fetchVocabForDict();
   }, []);
 
-  // 2. HÀM QUÉT CHỮ BÔI ĐEN BẰNG CHUỘT/CẢM ỨNG (ĐÃ NÂNG CẤP LẤY TỌA ĐỘ)
+  // 2. HÀM QUÉT CHỮ BÔI ĐEN BẰNG CHUỘT/CẢM ỨNG (ĐÃ FIX CHO MOBILE)
   const handleSelection = () => {
       setTimeout(() => { 
           const selection = window.getSelection();
@@ -1697,7 +1705,8 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
                   const rect = range.getBoundingClientRect();
                   
                   setTooltipPos({
-                      top: rect.top - 10, 
+                      // ĐÃ FIX: Dời tọa độ xuống bên DƯỚI đoạn text thay vì ở trên
+                      top: rect.bottom + 12, 
                       left: rect.left + rect.width / 2 
                   });
                   setSelectedWord(text);
@@ -1777,7 +1786,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
       }
   };
 
-  // --- TÍNH NĂNG MỚI: LƯU NHANH TRỰC TIẾP (ĐÃ TỐI ƯU SIÊU TỐC + TRÍ NHỚ AI) ---
+  // --- TÍNH NĂNG MỚI: LƯU NHANH TRỰC TIẾP (ĐÃ FIX KỶ LUẬT THÉP ÉP AI TRẢ JSON) ---
   const handleQuickSave = async (type, wordToSave) => {
       const cleanWord = wordToSave.trim().toLowerCase().replace(/[^a-z-\s]/g, '');
       if (!cleanWord) return;
@@ -1799,12 +1808,18 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
           }
 
           let prompt = type === "grammar"
-            ? `Giải thích cấu trúc ngữ pháp: "${cleanWord}".\nTrả về JSON:\n{"word": "${cleanWord}", "phonetic": "Công thức", "meaning": "Cách sử dụng cốt lõi", "usage": "1 ví dụ"}`
-            : `Phân tích cụm từ tiếng Anh: "${cleanWord}".\nTrả về JSON:\n{"word": "Từ chuẩn kèm (loại từ)", "phonetic": "Phiên âm", "meaning": "(Đồng nghĩa) - Nghĩa tiếng Việt.", "usage": "1 ví dụ"}`;
+            ? `Giải thích cấu trúc ngữ pháp: "${cleanWord}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON:\n{"word": "${cleanWord}", "phonetic": "Công thức", "meaning": "Cách sử dụng cốt lõi", "usage": "1 ví dụ"}`
+            : `Phân tích cụm từ tiếng Anh: "${cleanWord}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON:\n{"word": "Từ vựng (kèm từ loại)", "phonetic": "Phiên âm", "meaning": "(Đồng nghĩa) - Nghĩa tiếng Việt.", "usage": "1 ví dụ"}`;
+
+          // ĐÃ THÊM LỚP BẢO VỆ MIME_TYPE
+          const requestBody = { contents: [{ parts: [{ text: prompt }] }] };
+          if (window.globalCachedModel.includes("1.5")) {
+              requestBody.generationConfig = { response_mime_type: "application/json" };
+          }
 
           const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${GEMINI_API_KEY}`, {
               method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+              body: JSON.stringify(requestBody)
           });
           const data = await res.json();
 
@@ -1818,10 +1833,13 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
           }
 
           let rawText = data.candidates[0].content.parts[0].text;
-          rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+          const jsonMatch = rawText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+          if (jsonMatch) rawText = jsonMatch[0];
+
           onSaveWord(type, JSON.parse(rawText)); 
       } catch (error) {
-          onSaveWord(type, cleanWord); 
+          console.error("Lỗi Dịch Bôi Đen:", error);
+          onSaveWord(type, cleanWord); // Lỗi nặng quá thì đành lưu chữ thô
       }
   };
 
@@ -2177,45 +2195,48 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
   return (
     <div className="container" style={{ maxWidth: TOEIC_PART !== "part5" ? "600px" : "450px", position: "relative" }}>
 
-      {/* TOOLTIP HIỂN THỊ NGAY TRÊN CHỮ BÔI ĐEN GIỐNG ĐIỆN THOẠI */}
+      {/* TOOLTIP HIỂN THỊ NGAY TRÊN CHỮ BÔI ĐEN GIỐNG ĐIỆN THOẠI (ĐÃ FIX UX) */}
       {selectedWord && tooltipPos && !dictModal && (
           <div style={{
               position: "fixed",
               top: `${tooltipPos.top}px`,
               left: `${tooltipPos.left}px`,
-              transform: "translate(-50%, -100%)", 
+              // ĐÃ FIX: Không hất lên trên (-100%) nữa, để nó trỏ xuống dưới (0)
+              transform: "translate(-50%, 0)", 
               backgroundColor: "#2c3e50",
               color: "white",
-              padding: "8px 12px",
-              borderRadius: "8px",
+              // ĐÃ FIX: Tăng kích thước nút bấm để dễ chạm trên điện thoại
+              padding: "10px 16px",
+              borderRadius: "10px",
               display: "flex",
-              gap: "12px",
+              gap: "15px",
               zIndex: 1000,
-              boxShadow: "0 4px 15px rgba(0,0,0,0.3)",
+              boxShadow: "0 6px 20px rgba(0,0,0,0.3)",
               animation: "popIn 0.2s ease-out",
               whiteSpace: "nowrap"
           }}>
-              <span onClick={() => handleLookup(selectedWord)} style={{ cursor: "pointer", fontWeight: "bold", fontSize: "14px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <span onClick={() => handleLookup(selectedWord)} style={{ cursor: "pointer", fontWeight: "bold", fontSize: "15px", display: "flex", alignItems: "center", gap: "6px" }}>
                   🔍 Dịch
               </span>
               <div style={{ width: "1px", backgroundColor: "#546e7a" }}></div>
               
               {/* NÚT LƯU VÀO TỪ VỰNG */}
-              <span onClick={() => handleQuickSave("vocab", selectedWord)} style={{ cursor: "pointer", fontWeight: "bold", fontSize: "14px", display: "flex", alignItems: "center", gap: "6px", color: "#4CAF50" }}>
+              <span onClick={() => handleQuickSave("vocab", selectedWord)} style={{ cursor: "pointer", fontWeight: "bold", fontSize: "15px", display: "flex", alignItems: "center", gap: "6px", color: "#4CAF50" }}>
                   🔖 + Từ
               </span>
               
               <div style={{ width: "1px", backgroundColor: "#546e7a" }}></div>
               
               {/* NÚT LƯU VÀO NGỮ PHÁP */}
-              <span onClick={() => handleQuickSave("grammar", selectedWord)} style={{ cursor: "pointer", fontWeight: "bold", fontSize: "14px", display: "flex", alignItems: "center", gap: "6px", color: "#FF9800" }}>
+              <span onClick={() => handleQuickSave("grammar", selectedWord)} style={{ cursor: "pointer", fontWeight: "bold", fontSize: "15px", display: "flex", alignItems: "center", gap: "6px", color: "#FF9800" }}>
                   📐 + Cấu trúc
               </span>
               
-              <div style={{ position: "absolute", bottom: "-6px", left: "50%", transform: "translateX(-50%)", borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "6px solid #2c3e50" }}></div>
+              {/* ĐÃ FIX: Lật ngược mũi tên tam giác để nó chỉ lên trên */}
+              <div style={{ position: "absolute", top: "-6px", left: "50%", transform: "translateX(-50%)", borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderBottom: "8px solid #2c3e50" }}></div>
           </div>
       )}
-
+      
       {/* MODAL KẾT QUẢ TRA TỪ ĐIỂN TÍCH HỢP SỔ TAY */}
       {dictModal && (
         <div onClick={() => setDictModal(null)} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.7)", zIndex: 1100, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px", boxSizing: "border-box", cursor: "pointer" }}>
@@ -2495,9 +2516,14 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
       }
 
       let rawText = data.candidates[0].content.parts[0].text;
-      const jsonMatch = rawText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+      
+      // ĐÃ FIX: Chỉ săn lùng mảng [...] để chống rác tuyệt đối
+      const jsonMatch = rawText.match(/\[[\s\S]*\]/); 
       if (jsonMatch) rawText = jsonMatch[0];
-      return JSON.parse(rawText); 
+      
+      const parsedArray = JSON.parse(rawText); 
+      if (!Array.isArray(parsedArray)) throw new Error("AI không trả về mảng dữ liệu.");
+      return parsedArray; 
   };
 
   // --- ĐÃ NÂNG CẤP: GỌI AI 1 LẦN DUY NHẤT DÙ LÀ 1 TỪ HAY 10 TỪ ---
