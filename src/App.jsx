@@ -526,13 +526,14 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isM
         // --- THUẬT TOÁN MỚI: TẠO DATA TỪ SỔ TAY ---
         const savedWords = stats?.savedWords || [];
         const wrongWords = stats?.wrongWords || [];
+        const masteredWords = stats?.masteredWords || [];
         
         // ĐÃ FIX: Level 0 (Flashcard) CHỈ lấy từ ô vàng (Ghim thủ công). Các level cao hơn mới trộn thêm ô đỏ (Làm sai nhiều)
         let wordsToLearn = [];
         if (DIFFICULTY_LEVEL === 0) {
             wordsToLearn = [...savedWords];
         } else {
-            wordsToLearn = [...savedWords, ...wrongWords];
+            wordsToLearn = [...masteredWords];
         }
         
         const customWordSet = new Set(wordsToLearn.map(w => w.toLowerCase().trim()));
@@ -1116,8 +1117,15 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isM
     onBack(); 
   };
 
+  // ĐÃ FIX: Thông báo Loading xịn xò đổi theo từng Level
   if (loadingData || questionsData.length === 0) {
-    return <div className="container" style={{ textAlign: "center", paddingTop: "50px" }}><h2>Đang chuẩn bị thẻ bài... 🎴</h2></div>;
+    return (
+      <div className="container" style={{ textAlign: "center", paddingTop: "50px" }}>
+        <h2>
+          {DIFFICULTY_LEVEL === 0 ? "Đang chuẩn bị thẻ bài... 🎴" : "Đang tải dữ liệu... ⏳"}
+        </h2>
+      </div>
+    );
   }
 
   if (isGameOver || (DIFFICULTY_LEVEL < 3 && current >= questionsData.length)) {
@@ -2395,7 +2403,7 @@ globalBgm.loop = false;
 // =======================================================================
 // COMPONENT: SỔ TAY TÍCH HỢP AI + SỬA BẰNG TAY (MANUAL EDIT) XỊN SÒ
 // =======================================================================
-function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord }) { 
+function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveWord }) {
   const [activeTab, setActiveTab] = useState("vocab");
   const [newWord, setNewWord] = useState("");
   const [isAdding, setIsAdding] = useState(false); 
@@ -2406,11 +2414,11 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord }) {
   const [isEditingManual, setIsEditingManual] = useState(false);
   const [manualInputs, setManualInputs] = useState({ phonetic: "", meaning: "", usage: "" });
 
-  // HÀM LÕI: GỌI AI TRONG SỔ TAY (ĐÃ TỐI ƯU SIÊU TỐC + TRÍ NHỚ AI)
-  const fetchAI = async (wordInput, currentTab) => {
+  // --- TÍNH NĂNG MỚI: HÀM LÕI 2 "DỊCH SỈ" (BATCH PROCESSING) TIẾT KIỆM API ---
+  const fetchAIBatch = async (wordsString, currentTab) => {
       const API_KEY = getActiveKey();
       if (!API_KEY) throw new Error("No_API");
-      
+
       if (!window.globalCachedModel) {
           const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
           const listData = await listRes.json();
@@ -2419,45 +2427,63 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord }) {
           window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
       }
 
-      let prompt = currentTab === "grammar" 
-        ? `Giải thích cấu trúc ngữ pháp: "${wordInput}".\nTrả về JSON:\n{"word": "${wordInput}", "phonetic": "Công thức", "meaning": "Cách sử dụng cốt lõi", "usage": "1 ví dụ"}`
-        : `Phân tích cụm từ tiếng Anh: "${wordInput}".\nTrả về JSON:\n{"word": "Từ chuẩn", "phonetic": "Phiên âm", "meaning": "(Đồng nghĩa) - Nghĩa.", "usage": "1 ví dụ"}`;
+      // ÉP AI TRẢ VỀ 1 MẢNG BỌC NGOÀI [...] THAY VÌ 1 OBJECT {...}
+      let prompt = currentTab === "grammar"
+        ? `Giải thích các cấu trúc ngữ pháp sau: "${wordsString}".\nTrả về CHỈ 1 MẢNG JSON (Tuyệt đối không dùng markdown \`\`\`json):\n[{"word": "cấu trúc 1", "phonetic": "Công thức 1", "meaning": "Cách dùng 1", "usage": "Ví dụ 1"}, {"word": "cấu trúc 2", "phonetic": "Công thức 2", "meaning": "Cách dùng 2", "usage": "Ví dụ 2"}]`
+        : `Phân tích các từ/cụm từ tiếng Anh sau: "${wordsString}".\nTrả về CHỈ 1 MẢNG JSON (Tuyệt đối không dùng markdown \`\`\`json):\n[{"word": "Từ chuẩn 1 (loại từ)", "phonetic": "Phiên âm 1", "meaning": "(Đồng nghĩa 1) - Nghĩa 1", "usage": "Ví dụ 1"}, {"word": "Từ chuẩn 2", "phonetic": "Phiên âm 2", "meaning": "Nghĩa 2", "usage": "Ví dụ 2"}]`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${API_KEY}`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
       });
       const data = await res.json();
-      
+
       if (data.error && (data.error.message.toLowerCase().includes("quota") || data.error.message.toLowerCase().includes("expired") || data.error.code === 429)) {
           window.globalCachedModel = null;
           if (rotateKey()) {
-              await new Promise(r => setTimeout(r, 1500)); 
-              return fetchAI(wordInput, currentTab);
+              await new Promise(r => setTimeout(r, 1500));
+              return fetchAIBatch(wordsString, currentTab);
           }
           throw new Error("Hết toàn bộ Key dự phòng!");
       }
 
       let rawText = data.candidates[0].content.parts[0].text;
       rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-      return JSON.parse(rawText);
+      return JSON.parse(rawText); // Kết quả trả về sẽ là một Array [...]
   };
 
+  // --- ĐÃ NÂNG CẤP: GỌI AI 1 LẦN DUY NHẤT DÙ LÀ 1 TỪ HAY 10 TỪ ---
   const handleAddNew = async (e) => {
     e.preventDefault();
     const wordInput = newWord.trim();
     if (!wordInput) return;
     setIsAdding(true);
+
     try {
-        const aiWordObj = await fetchAI(wordInput, activeTab);
-        
-        // ĐÃ FIX: Ép AI giữ nguyên tên gốc của từ bác vừa gõ
-        aiWordObj.word = wordInput; 
-        
-        onSaveWord(activeTab, aiWordObj);
+        if (wordInput.includes(',')) {
+            // Nếu người dùng nhập nhiều từ có dấu phẩy -> Gọi AI 1 lượt duy nhất!
+            const aiWordsArray = await fetchAIBatch(wordInput, activeTab);
+            
+            // Nhận kết quả 1 cục rồi mới tách ra cất vào Database
+            for (let wordObj of aiWordsArray) {
+                await onSaveWord(activeTab, wordObj);
+            }
+        } else {
+            // Nếu chỉ nhập 1 từ -> Chạy bình thường
+            const aiWordObj = await fetchAI(wordInput, activeTab);
+            aiWordObj.word = wordInput; 
+            await onSaveWord(activeTab, aiWordObj);
+        }
     } catch (error) {
         if(error.message === "No_API") alert("Bạn chưa cấu hình API Key để gọi AI!");
-        else { console.error("Lỗi AI:", error); onSaveWord(activeTab, wordInput.toLowerCase()); }
+        else { 
+            console.error("Lỗi AI:", error); 
+            // Nếu AI gặp sự cố, vẫn lưu thô các chữ vào Sổ tay để học viên tự sửa sau
+            const rawWords = wordInput.split(',').map(w => w.trim()).filter(w => w);
+            for (let w of rawWords) {
+                 await onSaveWord(activeTab, w.toLowerCase());
+            }
+        }
     }
     setIsAdding(false);
     setNewWord(""); 
@@ -2516,27 +2542,65 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord }) {
     setIsEditingManual(false); 
   }
 
-  const renderTags = (words, color, bgColor, listType, limit = null) => {
-      if (!words || words.length === 0) return <p style={{ color: "#999", fontStyle: "italic", fontSize: "14px", margin: 0 }}>Chưa có mục nào...</p>;
-      const displayWords = limit ? words.slice(0, limit) : words;
-      const hasMore = limit && words.length > limit;
-
+  // --- ĐÃ NÂNG CẤP: THÊM NÚT "V" CHO CẢ Ô VÀNG VÀ Ô ĐỎ ---
+  const renderTags = (wordsArray, color, bgColor, listType, limit = null) => {
+      if (!wordsArray || wordsArray.length === 0) return <p style={{ color: "#aaa", fontSize: "14px", fontStyle: "italic", margin: 0 }}>Chưa có từ nào.</p>;
+      const displayWords = limit ? wordsArray.slice(0, limit) : wordsArray;
+      
       return (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
-            {displayWords.map((w, i) => (
-              <span key={i} onClick={() => openDetail(w, listType)} style={{ backgroundColor: bgColor, color: color, padding: "6px 12px", borderRadius: "20px", fontSize: "14px", fontWeight: "bold", border: `1px solid ${color}40`, display: "flex", alignItems: "center", cursor: "pointer", transition: "0.2s" }} onMouseOver={(e) => e.currentTarget.style.transform = "scale(1.05)"} onMouseOut={(e) => e.currentTarget.style.transform = "scale(1)"} title="Bấm để xem chi tiết">
-                {w}
-                <span onClick={(e) => { e.stopPropagation(); onRemoveWord(activeTab, listType, w); if(viewAllModal) setViewAllModal(null); if(wordDetailModal) setWordDetailModal(null); }} style={{ marginLeft: "8px", display: "inline-flex", justifyContent: "center", alignItems: "center", width: "18px", height: "18px", borderRadius: "50%", backgroundColor: "rgba(0,0,0,0.1)", fontSize: "10px", transition: "0.2s" }} onMouseOver={(e) => { e.currentTarget.style.backgroundColor = color; e.currentTarget.style.color = "white"; }} onMouseOut={(e) => { e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.1)"; e.currentTarget.style.color = color; }} title="Xóa khỏi sổ tay">✖</span>
-              </span>
-            ))}
-            {hasMore && (
-               <span onClick={() => { playSound("click"); setViewAllModal({ title: "Tất cả mục", words, color, bgColor, listType }); }} style={{ color: color, fontSize: "13px", fontWeight: "bold", cursor: "pointer", padding: "4px 8px", backgroundColor: "rgba(0,0,0,0.05)", borderRadius: "10px" }}>
-                 ... và {words.length - limit} mục khác
-               </span>
-            )}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+              {displayWords.map(word => {
+                  const wordStr = typeof word === 'string' ? word : word.word;
+                  return (
+                      <div key={wordStr} style={{ position: "relative", display: "inline-flex", alignItems: "center", textTransform: "none" }}>
+                          
+                          {/* 1. Phần Bấm vào Chữ để mở Modal */}
+                          <span onClick={() => openDetail(wordStr, listType)} style={{ padding: "6px 36px 6px 12px", borderRadius: "20px", fontSize: "14px", backgroundColor: bgColor, color: color, fontWeight: "500", cursor: "pointer", border: `1px solid ${color}80`, boxShadow: "0 2px 4px rgba(0,0,0,0.05)" }}>
+                              {wordStr}
+                          </span>
+                          
+                          {/* 2. Cụm Nút Bấm Chức Năng (V và X) */}
+                          <div style={{ position: "absolute", top: "-5px", right: "-8px", display: "flex", gap: "2px" }}>
+                              
+                              {/* NÚT V (Hiện ở cả Ô Đỏ và Ô Vàng) */}
+                              {(listType === "wrongWords" || listType === "savedWords") && (
+                                  <button 
+                                      onClick={(e) => { 
+                                          e.stopPropagation(); 
+                                          if (listType === "wrongWords") {
+                                              onMoveWord(activeTab, "wrongWords", "savedWords", wordStr); // Đỏ -> Vàng
+                                          } else if (listType === "savedWords") {
+                                              onMoveWord(activeTab, "savedWords", "masteredWords", wordStr); // Vàng -> Xanh
+                                          }
+                                      }}
+                                      style={{ width: "20px", height: "20px", borderRadius: "50%", backgroundColor: "#4CAF50", color: "white", border: "1px solid white", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, fontWeight: "bold", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }}
+                                      title={listType === "wrongWords" ? "Đã sửa sai -> Chuyển lên Ô Vàng" : "Đã thuộc -> Chuyển xuống Ô Xanh"}
+                                  >✓</button>
+                              )}
+                              
+                              {/* NÚT X (Luôn luôn là XÓA VĨNH VIỄN) */}
+                              <button 
+                                  onClick={(e) => { 
+                                      e.stopPropagation(); 
+                                      onRemoveWord(activeTab, listType, wordStr); 
+                                  }} 
+                                  style={{ width: "20px", height: "20px", borderRadius: "50%", backgroundColor: color, color: "white", border: "1px solid white", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, fontWeight: "bold", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }}
+                                  title="Xóa vĩnh viễn khỏi Sổ tay"
+                              >×</button>
+                          </div>
+                      </div>
+                  );
+              })}
+              
+              {/* Nút Xem Thêm */}
+              {limit && wordsArray.length > limit && (
+                  <span onClick={() => { playSound("click"); setViewAllModal({ title: activeTab === "grammar" ? "📘 Cấu trúc đã lưu" : "Tất cả mục", words: wordsArray, color, bgColor, listType }); }} style={{ padding: "6px 12px", borderRadius: "20px", fontSize: "13px", backgroundColor: "#f5f5f5", color: "#666", cursor: "pointer", border: "1px dashed #ccc", display: "inline-flex", alignItems: "center" }}>
+                      +{wordsArray.length - limit} xem thêm
+                  </span>
+              )}
           </div>
       );
-  }
+  };
 
   const renderWordList = (title, words, icon, color, bgColor, listType) => (
     <div style={{ marginBottom: "20px", textAlign: "left", backgroundColor: "#fff", padding: "15px", borderRadius: "12px", border: `1px solid ${color}`, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
@@ -2563,7 +2627,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord }) {
       <form onSubmit={handleAddNew} style={{ display: "flex", gap: "10px", marginBottom: "20px", animation: "popIn 0.3s ease-out" }} noValidate>
         <input 
            type="text" value={newWord} onChange={(e) => setNewWord(e.target.value)} disabled={isAdding}
-           placeholder={activeTab === "grammar" ? "Nhập cấu trúc (VD: suggest, in order to...)" : `Nhập ${activeTab === "vocab" ? "từ vựng" : "cụm từ"} mới...`}
+           placeholder={activeTab === "grammar" ? "Nhập cấu trúc (cách nhau bằng dấu phẩy)..." : "Nhập nhiều từ cách nhau bằng dấu phẩy (,)..."}
            style={{ flex: 1, padding: "12px", borderRadius: "8px", border: "1px solid #ccc", outline: "none", fontSize: "16px", textTransform: activeTab === "grammar" ? "none" : "lowercase" }}
            autoComplete="off" autoCorrect="off" spellCheck="false"
         />
@@ -2659,13 +2723,19 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord }) {
   );
 }
 
-// HÀM TÁCH LOGIC RENDER: GIẤU TAB "LÀM SAI NHIỀU" NẾU ĐANG Ở MÀN NGỮ PHÁP
+// HÀM TÁCH LOGIC RENDER: HIỂN THỊ CẢ 3 CẤP ĐỘ
 function renderListLogic(globalStats, activeTab, renderWordList) {
     const stats = globalStats[activeTab] || {};
     return (
         <>
-            {renderWordList(activeTab === "grammar" ? "📘 Cấu trúc đã lưu" : "🔖 Ghim thủ công (Đang khó nhớ)", stats.savedWords, "🔖", "#FF9800", "#fff3e0", "savedWords")}
+            {/* Ô VÀNG: Ghim thủ công */}
+            {renderWordList(activeTab === "grammar" ? "📘 Cấu trúc đã lưu" : "🔖 Đang học (Đang khó nhớ)", stats.savedWords, "🔖", "#FF9800", "#fff3e0", "savedWords")}
+            
+            {/* Ô ĐỎ: Làm sai nhiều */}
             {activeTab !== "grammar" && renderWordList("❌ Làm sai nhiều (Cần khắc phục)", stats.wrongWords, "❌", "#F44336", "#ffebee", "wrongWords")}
+            
+            {/* Ô XANH: Đã thuộc */}
+            {activeTab !== "grammar" && renderWordList("✅ Đã thực sự thuộc (Sẽ ôn ở Lv Cao)", stats.masteredWords, "✅", "#4CAF50", "#e8f5e9", "masteredWords")}
         </>
     )
 }
@@ -2721,7 +2791,8 @@ function App() {
       if (document.hidden) {
         globalBgm.pause();
       } else {
-        if (isMusicPlaying && screen === "home" && !showTutorial && currentUser) {
+        // ĐÃ FIX: Bật lại nhạc cho cả Sổ tay khi mở lại web
+        if (isMusicPlaying && (screen === "home" || screen === "notebook") && !showTutorial && currentUser) {
           globalBgm.play().catch(e => console.log("Lỗi bật lại nhạc:", e));
         }
       }
@@ -2740,13 +2811,15 @@ function App() {
 
   useEffect(() => {
     globalBgm.src = BGM_PLAYLIST[currentTrackIndex];
-    if (isMusicPlaying && screen === "home" && !showTutorial) {
+    // ĐÃ FIX: Đổi bài hát thì phát nhạc cho cả Sổ tay
+    if (isMusicPlaying && (screen === "home" || screen === "notebook") && !showTutorial) {
       globalBgm.play().catch(e => console.log("Đợi tương tác..."));
     }
   }, [currentTrackIndex, isMusicPlaying, screen, showTutorial]);
 
   useEffect(() => {
-    if (screen === "home" && isMusicPlaying && !showTutorial && currentUser) {
+    // ĐÃ FIX: Cho phép nhạc phát khi đang ở Trang chủ HOẶC Sổ tay
+    if ((screen === "home" || screen === "notebook") && isMusicPlaying && !showTutorial && currentUser) {
       globalBgm.play().catch(e => console.log("Đợi tương tác..."));
     } else {
       globalBgm.pause();
@@ -2878,25 +2951,21 @@ function App() {
       updatePayload[`${type}.learnedWords`] = arrayUnion(itemValue);
 
       // ĐÃ FIX: Chỉ tự động lưu từ làm sai vào Sổ tay nếu là Từ vựng/Colloc. 
-      // Chặn lưu câu hỏi Ngữ pháp dài dòng để giữ Sổ tay Ngữ pháp sạch sẽ!
       if (!isCorrect && type !== "grammar") {
           updatePayload[`${type}.wrongWords`] = arrayUnion(itemValue);
+          // CHỐNG TRÙNG: Khi làm sai (vào Ô Đỏ), xóa sạch nó khỏi Vàng và Xanh
+          updatePayload[`${type}.savedWords`] = arrayRemove(itemValue);
+          updatePayload[`${type}.masteredWords`] = arrayRemove(itemValue);
       }
     }
 
     try {
       await updateDoc(doc(db, "users", currentUser.uid), updatePayload);
-    } catch(e) {
-      console.error("Lỗi cập nhật tiến độ:", e);
-    }
+    } catch(e) { console.error("Lỗi cập nhật tiến độ:", e); }
 
     setGlobalStats(prev => {
       const newState = { ...prev };
-      newState[type] = {
-        ...newState[type],
-        correct: newCorrect,
-        total: newTotal
-      };
+      newState[type] = { ...newState[type], correct: newCorrect, total: newTotal };
       
       if (itemValue) {
         const currentWords = prev[type].learnedWords || [];
@@ -2909,6 +2978,9 @@ function App() {
            if (!currentWrong.includes(itemValue)) {
                newState[type].wrongWords = [...currentWrong, itemValue];
            }
+           // CHỐNG TRÙNG (XÓA TRÊN GIAO DIỆN):
+           if (newState[type].savedWords) newState[type].savedWords = newState[type].savedWords.filter(w => w !== itemValue);
+           if (newState[type].masteredWords) newState[type].masteredWords = newState[type].masteredWords.filter(w => w !== itemValue);
         }
       }
       return newState;
@@ -2927,27 +2999,30 @@ function App() {
     );
   }
 
- // --- TÍNH NĂNG MỚI: HÀM LƯU TỪ VÀO SỔ TAY THỦ CÔNG ---
+
+
   // --- TÍNH NĂNG MỚI: LƯU TỪ VÀ ĐỊNH NGHĨA AI VÀO KHO CÁ NHÂN ---
   const handleSaveDifficultWord = async (type, wordData) => {
     if (!currentUser) return;
     
-    // Kiểm tra xem đầu vào là chuỗi (chơi game) hay Object (do AI dịch)
     const isFromAI = typeof wordData === "object";
     const wordStr = isFromAI ? wordData.word : wordData;
 
     try {
       playSound("click");
-      const updatePayload = { [`${type}.savedWords`]: arrayUnion(wordStr) };
+      const updatePayload = { 
+          [`${type}.savedWords`]: arrayUnion(wordStr),
+          // CHỐNG TRÙNG: Khi lưu vào Ô Vàng, tự động xóa nó khỏi Ô Đỏ và Ô Xanh
+          [`${type}.wrongWords`]: arrayRemove(wordStr),
+          [`${type}.masteredWords`]: arrayRemove(wordStr)
+      };
       
-      // Nếu có định nghĩa từ AI, lưu thêm vào kho từ điển cá nhân
       if (isFromAI) { updatePayload[`${type}.addedWordsObj`] = arrayUnion(wordData); }
 
       await updateDoc(doc(db, "users", currentUser.uid), updatePayload);
       
       setGlobalStats(prev => {
         const newState = { ...prev };
-        // Khởi tạo an toàn
         if (!newState[type].savedWords) newState[type].savedWords = [];
         if (!newState[type].addedWordsObj) newState[type].addedWordsObj = [];
 
@@ -2955,12 +3030,58 @@ function App() {
             newState[type].savedWords = [...newState[type].savedWords, wordStr];
         }
         if (isFromAI) {
-            // Thêm Object vào UI ngay lập tức
             newState[type].addedWordsObj = [...newState[type].addedWordsObj, wordData];
         }
+        
+        // CHỐNG TRÙNG (XÓA TRÊN GIAO DIỆN)
+        if (newState[type].wrongWords) newState[type].wrongWords = newState[type].wrongWords.filter(w => w !== wordStr);
+        if (newState[type].masteredWords) newState[type].masteredWords = newState[type].masteredWords.filter(w => w !== wordStr);
+        
         return newState;
       });
     } catch(e) { console.error("Lỗi lưu từ:", e); }
+  };
+
+  // Line ~1144
+// --- TÍNH NĂNG MỚI: DI CHUYỂN TỪ GIỮA CÁC DANH SÁCH (CHỐNG TRÙNG LẶP TUYỆT ĐỐI) ---
+  const handleMoveWord = async (type, fromList, toList, wordToMove) => {
+      if (!currentUser) return;
+      playSound("click");
+      try {
+          // Xác định danh sách sẽ chuyển đến, và lấy ra 2 danh sách còn lại để tiến hành "thanh trừng"
+          const allLists = ["savedWords", "wrongWords", "masteredWords"];
+          const listsToRemove = allLists.filter(l => l !== toList);
+
+          // Firestore: Ép thêm vào 1 chỗ và Xóa sạch ở 2 chỗ kia
+          await updateDoc(doc(db, "users", currentUser.uid), {
+              [`${type}.${listsToRemove[0]}`]: arrayRemove(wordToMove),
+              [`${type}.${listsToRemove[1]}`]: arrayRemove(wordToMove),
+              [`${type}.${toList}`]: arrayUnion(wordToMove)
+          });
+
+          // Local State update
+          setGlobalStats(prev => {
+              const newState = { ...prev };
+              if (!newState[type]) newState[type] = {};
+
+              // Xóa khỏi 2 danh sách không liên quan
+              listsToRemove.forEach(listName => {
+                  if (newState[type][listName]) {
+                      newState[type][listName] = newState[type][listName].filter(w => w !== wordToMove);
+                  }
+              });
+
+              // Thêm vào danh sách đích
+              if (!newState[type][toList]) newState[type][toList] = [];
+              if (!newState[type][toList].includes(wordToMove)) {
+                  newState[type][toList] = [...newState[type][toList], wordToMove];
+              }
+
+              return newState;
+          });
+      } catch (error) {
+          console.error("Lỗi di chuyển từ:", error);
+      }
   };
 
   // --- TÍNH NĂNG MỚI: XÓA TỪ KHỎI SỔ TAY ---
@@ -2982,6 +3103,8 @@ function App() {
       });
     } catch(e) { console.error("Lỗi xóa từ:", e); }
   };
+
+  
   
 // TÍNH TOÁN SỐ TỪ TRONG SỔ TAY ĐỂ LÀM NGUỒN CUSTOM
   const customVocabSet = new Set([...(globalStats.vocab.savedWords || []), ...(globalStats.vocab.wrongWords || [])]);
@@ -3000,7 +3123,8 @@ function App() {
   if (screen === "grammar_settings") {
     return <QuizSettings mode="grammar" onBack={() => setScreen("home")} onStart={(settings) => { setQuizSettings(settings); setScreen("grammar"); }} />
   }
-  if (screen === "notebook") return <NotebookScreen globalStats={globalStats} onBack={() => { playSound("click"); setScreen("home"); }} onSaveWord={handleSaveDifficultWord} onRemoveWord={handleRemoveWord} />;
+  // Line ~1170
+  if (screen === "notebook") return <NotebookScreen globalStats={globalStats} onBack={() => { playSound("click"); setScreen("home"); }} onSaveWord={handleSaveDifficultWord} onRemoveWord={handleRemoveWord} onMoveWord={handleMoveWord} />;
   if (screen === "vocab") return <WordQuiz mode="vocab" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} settings={quizSettings} stats={globalStats.vocab} isMusicPlaying={isMusicPlaying} />;
   if (screen === "collocation") return <WordQuiz mode="collocation" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} settings={quizSettings} stats={globalStats.collocation} isMusicPlaying={isMusicPlaying} />;
   if (screen === "grammar") return <GrammarQuiz onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} settings={quizSettings} learnedQuestions={globalStats.grammar.learnedWords || []} />;
