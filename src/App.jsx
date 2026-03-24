@@ -8,7 +8,8 @@ import {
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   signOut, 
-  onAuthStateChanged 
+  onAuthStateChanged,
+  updateProfile
 } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 
@@ -394,7 +395,7 @@ function QuizSettings({ mode, onStart, onBack, customWordsCount = 0 }) {
 }
 
 // --- COMPONENT: ÔN TẬP TỪ VỰNG / COLLOCATION CHÍNH ---
-function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings, stats, isMusicPlaying }) {
+function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings, stats, isMusicPlaying, kpi }) {
   const DIFFICULTY_LEVEL = settings.difficultyLevel;
   const QUIZ_LIMIT = DIFFICULTY_LEVEL >= 3 ? 999 : settings.quizLimit; 
   const TIME_PER_QUESTION = settings.timePerQuestion;
@@ -1220,11 +1221,24 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
           {DIFFICULTY_LEVEL < 3 && (
             <button 
               onClick={() => { 
+                // CHẶN CỬA BẰNG KỶ LUẬT THÉP
+                if (kpi && kpi.target > 0 && kpi.current < kpi.target) {
+                    playSound("wrong");
+                    alert(`❌ KỶ LUẬT THÉP! Bạn mới thuộc được ${kpi.current}/${kpi.target} từ hôm nay. KHÔNG ĐƯỢC THOÁT, HÃY CÀY TIẾP ĐI!`);
+                    return;
+                }
                 if(streak >= REQUIRED_STREAK || DIFFICULTY_LEVEL === 0) { handleBackToHome(); }
               }} 
-              style={{ padding: "6px 10px", fontSize: "13px", cursor: (streak >= REQUIRED_STREAK || DIFFICULTY_LEVEL === 0) ? "pointer" : "not-allowed", backgroundColor: (streak >= REQUIRED_STREAK || DIFFICULTY_LEVEL === 0) ? "#e8f5e9" : "#f0f0f0", color: (streak >= REQUIRED_STREAK || DIFFICULTY_LEVEL === 0) ? "#2e7d32" : "#999", border: "1px solid #ccc", borderRadius: "6px", fontWeight: "bold", whiteSpace: "nowrap", margin: 0, flexShrink: 0 }}
+              style={{ 
+                padding: "6px 10px", fontSize: "13px", 
+                cursor: (kpi && kpi.target > 0 && kpi.current < kpi.target) ? "not-allowed" : ((streak >= REQUIRED_STREAK || DIFFICULTY_LEVEL === 0) ? "pointer" : "not-allowed"), 
+                backgroundColor: (kpi && kpi.target > 0 && kpi.current < kpi.target) ? "#ffebee" : ((streak >= REQUIRED_STREAK || DIFFICULTY_LEVEL === 0) ? "#e8f5e9" : "#f0f0f0"), 
+                color: (kpi && kpi.target > 0 && kpi.current < kpi.target) ? "#d32f2f" : ((streak >= REQUIRED_STREAK || DIFFICULTY_LEVEL === 0) ? "#2e7d32" : "#999"), 
+                border: (kpi && kpi.target > 0 && kpi.current < kpi.target) ? "1px solid #f44336" : "1px solid #ccc", 
+                borderRadius: "6px", fontWeight: "bold", whiteSpace: "nowrap", margin: 0, flexShrink: 0 
+              }}
             >
-              ⬅ {(streak >= REQUIRED_STREAK || DIFFICULTY_LEVEL === 0) ? "🔓" : `🔒 ${streak}/${REQUIRED_STREAK}`}
+              {(kpi && kpi.target > 0 && kpi.current < kpi.target) ? `🔒 Bị khóa (${kpi.current}/${kpi.target})` : ((streak >= REQUIRED_STREAK || DIFFICULTY_LEVEL === 0) ? "⬅ 🔓" : `⬅ 🔒 ${streak}/${REQUIRED_STREAK}`)}
             </button>
           )}
         </div>
@@ -2942,6 +2956,199 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [screen, setScreen] = useState("home"); 
+
+  const [showProfileMenu, setShowProfileMenu] = useState(false); 
+
+  // --- TÍNH NĂNG MỚI: KẾ HOẠCH HỌC TẬP (KỶ LUẬT THÉP) ---
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [dailyTarget, setDailyTarget] = useState(() => parseInt(localStorage.getItem("toeic_daily_target")) || 0);
+  const [studyTime, setStudyTime] = useState(() => localStorage.getItem("toeic_study_time") || "20:00");
+  // --- KỶ LUẬT THÉP: ĐẾM SỐ TỪ ĐÃ THUỘC TRONG NGÀY ---
+  const [todayMasteredCount, setTodayMasteredCount] = useState(() => {
+      const savedDate = localStorage.getItem("toeic_last_study_date");
+      const today = new Date().toLocaleDateString();
+      if (savedDate !== today) {
+          localStorage.setItem("toeic_today_mastered", "0");
+          localStorage.setItem("toeic_last_study_date", today);
+          return 0;
+      }
+      return parseInt(localStorage.getItem("toeic_today_mastered")) || 0;
+  });
+
+  const [countdownText, setCountdownText] = useState(null); // Lưu chuỗi đếm ngược (VD: "04:59")
+
+  // --- TÍNH NĂNG MỚI: ĐỒNG HỒ & LỊCH TRỰC TUYẾN ---
+  const [time, setTime] = useState(new Date());
+
+  useEffect(() => {
+      const timer = setInterval(() => setTime(new Date()), 1000);
+      return () => clearInterval(timer);
+  }, []);
+
+  const dayTranslations = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
+  const currentFormattedDate = dayTranslations[time.getDay()] + ', Ngày ' + time.getDate() + ' Tháng ' + (time.getMonth() + 1) + ', Năm ' + time.getFullYear();
+  const currentFormattedTime = time.getHours().toString().padStart(2, '0') + ':' + time.getMinutes().toString().padStart(2, '0')+ ':' + time.getSeconds().toString().padStart(2, '0');
+
+  // HỆ THỐNG BÁO THỨC ĐẾN GIỜ HỌC & ĐẾM NGƯỢC 5 PHÚT
+  useEffect(() => {
+      if (dailyTarget === 0) {
+          setCountdownText(null);
+          return;
+      }
+      
+      // Xin quyền gửi thông báo về điện thoại/PC
+      if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+          Notification.requestPermission();
+      }
+
+      const timer = setInterval(() => {
+          const now = new Date();
+          const currentHourMin = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+          
+          // --- MÁY TÍNH ĐẾM NGƯỢC 5 PHÚT ---
+          const [targetHour, targetMin] = studyTime.split(':').map(Number);
+          const targetDate = new Date();
+          targetDate.setHours(targetHour, targetMin, 0, 0);
+          
+          const diffMs = targetDate.getTime() - now.getTime();
+          
+          // Nếu còn <= 5 phút (300,000 ms) và lớn hơn 0
+          if (diffMs > 0 && diffMs <= 5 * 60 * 1000) {
+              const m = Math.floor(diffMs / 60000);
+              const s = Math.floor((diffMs % 60000) / 1000);
+              setCountdownText(`⏳ Sắp tới giờ: ${m}:${s.toString().padStart(2, '0')}`);
+          } else {
+              setCountdownText(null);
+          }
+
+          // Đúng giờ vàng -> Bắn thông báo
+          if (currentHourMin === studyTime && now.getSeconds() === 0) {
+              playSound("finish");
+              if (Notification.permission === "granted") {
+                  new Notification("⏰ Đến giờ Tu Tiên rồi!", {
+                      body: `Mục tiêu hôm nay: ${dailyTarget} từ. Vào cày ngay kẻo rớt trình!`,
+                      icon: "🚀"
+                  });
+              } else {
+                  alert(`⏰ ĐẾN GIỜ RỒI! Mục tiêu hôm nay của bạn là ${dailyTarget} từ. Vào cày ngay!`);
+              }
+          }
+      }, 1000);
+      return () => clearInterval(timer);
+  }, [dailyTarget, studyTime]);
+
+  const saveStudyPlan = () => {
+      playSound("click");
+      localStorage.setItem("toeic_daily_target", dailyTarget.toString());
+      localStorage.setItem("toeic_study_time", studyTime);
+      setShowPlanModal(false);
+      alert("✅ Đã thiết lập Kỷ Luật Thép! Hệ thống sẽ khóa nút thoát nếu chưa cày đủ chỉ tiêu.");
+  };
+  
+  // BƯỚC 2: Thêm các States và hàm xử lý Profile VIP Pro Max
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileNameInput, setProfileNameInput] = useState("");
+  const [profileAvatarFile, setProfileAvatarFile] = useState(null); // Giữ file ảnh mới chọn
+  const [avatarPreview, setAvatarPreview] = useState(null); // Giữ link ảnh để xem trước (preview)
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0); // Thanh tiến trình 0-100%
+
+  // MÁY XAY ẢNH "TÀ ĐẠO": Đã bọc thép Base64 chống chặn file
+  const handleProfileUpdate = async () => {
+      if (!currentUser) return;
+      
+      const trimmedName = profileNameInput.trim();
+      const hasNameChange = trimmedName && trimmedName !== currentUser.displayName;
+      const hasAvatarChange = !!profileAvatarFile;
+      
+      if (!hasNameChange && !hasAvatarChange) {
+          setShowProfileModal(false);
+          return;
+      }
+
+      setIsUpdatingProfile(true);
+      setUploadProgress(10); 
+      try {
+          const updateData = {};
+          if (hasNameChange) updateData.displayName = trimmedName;
+
+          if (hasAvatarChange) {
+              setUploadProgress(40); 
+              
+              // 1. ĐÃ FIX: Ép file ảnh thành chuỗi mã hóa (Base64) để lách qua mọi tường lửa/Adblock
+              const base64Image = await new Promise((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.readAsDataURL(profileAvatarFile);
+                  reader.onload = () => resolve(reader.result.split(',')[1]);
+                  reader.onerror = error => reject(error);
+              });
+
+              const formData = new FormData();
+              formData.append("image", base64Image);
+              
+              // 2. Gọi API đẩy ảnh
+              const API_KEY = "d5f05cd567b23cdc4af244c9ef4c4d15"; 
+              const res = await fetch(`https://api.imgbb.com/1/upload?key=${API_KEY}`, {
+                  method: "POST",
+                  body: formData
+              });
+              
+              const imgData = await res.json();
+              setUploadProgress(80); 
+              
+              if (imgData.success) {
+                  updateData.photoURL = imgData.data.url; 
+              } else {
+                  // ĐÃ FIX: In chính xác lý do lỗi từ máy chủ để dễ bắt bệnh
+                  throw new Error(imgData.error?.message || "Máy chủ ImgBB từ chối ảnh!");
+              }
+          }
+
+          // 3. Cập nhật profile Firebase Auth
+          await updateProfile(currentUser, updateData);
+          setUploadProgress(100);
+          
+          setCurrentUser({ 
+             ...currentUser, 
+             displayName: updateData.displayName || currentUser.displayName,
+             photoURL: updateData.photoURL || currentUser.photoURL
+          }); 
+          
+          setShowProfileModal(false);
+          setProfileAvatarFile(null);
+          setAvatarPreview(null);
+          playSound("finish");
+      } catch (error) {
+          console.error("Lỗi cập nhật profile:", error);
+          alert(`Lỗi upload ảnh: ${error.message}\n(Nếu vẫn bị, có thể API Key công cộng đã hết hạn)`);
+      }
+      setIsUpdatingProfile(false);
+      setUploadProgress(0);
+  };
+  
+  // --- TÍNH NĂNG MỚI: ĐỔI TÊN HIỂN THỊ ---
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [newNameInput, setNewNameInput] = useState("");
+  const [isUpdatingName, setIsUpdatingName] = useState(false);
+
+  const handleUpdateName = async () => {
+      const trimmedName = newNameInput.trim();
+      if (!trimmedName) return alert("Bác chưa nhập tên kìa!");
+      
+      setIsUpdatingName(true);
+      try {
+          // Lưu tên mới lên Đám mây Firebase
+          await updateProfile(currentUser, { displayName: trimmedName });
+          // Cập nhật lại UI ngay lập tức
+          setCurrentUser({ ...currentUser, displayName: trimmedName }); 
+          setShowNameModal(false);
+          playSound("finish");
+      } catch (error) {
+          console.error("Lỗi đổi tên:", error);
+          alert("Có lỗi xảy ra, không thể đổi tên lúc này!");
+      }
+      setIsUpdatingName(false);
+  };
   
   const [quizSettings, setQuizSettings] = useState(null);
   
@@ -3137,6 +3344,7 @@ function App() {
     
     const newCorrect = globalStats[type].correct + (isCorrect ? 1 : 0);
     const newTotal = globalStats[type].total + 1;
+    
     const currentState = globalStats[type] || {};
 
     // MÁY QUÉT X-QUANG: Xóa chữ hoa, xóa khoảng trắng thừa, lột sạch các tag loại từ (n), (v)...
@@ -3292,8 +3500,21 @@ function App() {
           // Ép nó vào mảng đích
           if (toList === "savedWords") cleanSaved.push(wordToMove);
           if (toList === "wrongWords") cleanWrong.push(wordToMove);
-          if (toList === "masteredWords") cleanMastered.push(wordToMove);
+          if (toList === "masteredWords") {
+              cleanMastered.push(wordToMove);
+              
+              // MÁY QUÉT CHỐNG CÀY ĐIỂM LÁO: Chỉ cộng KPI nếu từ này CHƯA TỪNG NẰM trong Ô Xanh
+              const isAlreadyMastered = (currentState.masteredWords || []).some(w => normalizeWord(w) === normStr);
+              if (!isAlreadyMastered) {
+                  setTodayMasteredCount(prev => {
+                      const newVal = prev + 1;
+                      localStorage.setItem("toeic_today_mastered", newVal.toString());
+                      return newVal;
+                  });
+              }
+          }
 
+          // ĐÃ FIX BƯỚC 3: THÊM KHAI BÁO GÓI DỮ LIỆU Ở ĐÂY KẺO SẬP
           const updatePayload = {
               [`${type}.savedWords`]: cleanSaved,
               [`${type}.wrongWords`]: cleanWrong,
@@ -3360,10 +3581,9 @@ function App() {
   if (screen === "notebook") return <NotebookScreen globalStats={globalStats} onBack={() => { playSound("click"); setScreen("home"); }} onSaveWord={handleSaveDifficultWord} onRemoveWord={handleRemoveWord} onMoveWord={handleMoveWord} />;
   
   // ĐÃ FIX BƯỚC 1: Truyền thêm onMoveWord={handleMoveWord} vào 2 dòng này
-  if (screen === "vocab") return <WordQuiz mode="vocab" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} stats={globalStats.vocab} isMusicPlaying={isMusicPlaying} />;
-  if (screen === "collocation") return <WordQuiz mode="collocation" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} stats={globalStats.collocation} isMusicPlaying={isMusicPlaying} />;
-  if (screen === "grammar") return <GrammarQuiz onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} learnedQuestions={globalStats.grammar.learnedWords || []} />;
-  
+  if (screen === "vocab") return <WordQuiz mode="vocab" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} stats={globalStats.vocab} isMusicPlaying={isMusicPlaying} kpi={{target: dailyTarget, current: todayMasteredCount}} />;
+  if (screen === "collocation") return <WordQuiz mode="collocation" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} stats={globalStats.collocation} isMusicPlaying={isMusicPlaying} kpi={{target: dailyTarget, current: todayMasteredCount}} />;
+  if (screen === "grammar") return <GrammarQuiz onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} learnedQuestions={globalStats.grammar.learnedWords || []} kpi={{target: dailyTarget, current: todayMasteredCount}} />;
   // --- TÍNH TOÁN THÔNG SỐ TỪ VỰNG ---
   const vocabTotal = globalStats.vocab.total;
   const vocabCorrect = globalStats.vocab.correct;
@@ -3406,24 +3626,72 @@ function App() {
           <input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} title="Điều chỉnh âm lượng" style={{ width: "40px", cursor: "pointer", marginLeft: "2px" }} />
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-          <span style={{ fontSize: "11px", color: "#333", fontWeight: "bold", maxWidth: "60px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={currentUser.email}>
-            👤 {currentUser.email.split('@')[0]}
-          </span>
-          <button 
-            onClick={handleLogout} 
-            title="Đăng xuất"
-            style={{ width: "28px", height: "28px", borderRadius: "50%", backgroundColor: "#ff4d4f", color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", transition: "0.2s", boxShadow: "0 2px 4px rgba(0,0,0,0.1)", padding: 0 }}
-            onMouseOver={(e) => e.currentTarget.style.transform = "scale(1.1)"}
-            onMouseOut={(e) => e.currentTarget.style.transform = "scale(1)"}
+        {/* MENU TÀI KHOẢN "VIP PRO" (DROPDOWN) */}
+        <div style={{ position: "relative" }}>
+          <div 
+            onClick={() => { playSound("click"); setShowProfileMenu(!showProfileMenu); }}
+            style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", padding: "4px 12px 4px 4px", backgroundColor: showProfileMenu ? "#e3f2fd" : "#fff", borderRadius: "30px", border: "1px solid #e0e0e0", boxShadow: "0 2px 4px rgba(0,0,0,0.05)", transition: "0.2s" }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#f0f8ff"}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = showProfileMenu ? "#e3f2fd" : "#fff"}
           >
-            🚪
-          </button>
+            {/* Avatar VIP: Ưu tiên hiện ảnh thật, nếu không có mới hiện chữ cái */}
+            {currentUser.photoURL ? (
+                <img src={currentUser.photoURL} alt="Avatar" style={{ width: "26px", height: "26px", borderRadius: "50%", objectFit: "cover", boxShadow: "0 2px 5px rgba(0,0,0,0.2)", border: "1px solid #e0e0e0" }} />
+            ) : (
+                <div style={{ width: "26px", height: "26px", borderRadius: "50%", backgroundColor: "#4facfe", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", fontWeight: "bold", boxShadow: "0 2px 5px rgba(0,0,0,0.2)" }}>
+                   {currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : currentUser.email.charAt(0).toUpperCase()}
+                </div>
+            )}
+            {/* Tên hiển thị */}
+            <span style={{ fontSize: "13px", color: "#333", fontWeight: "bold", maxWidth: "80px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {currentUser.displayName || currentUser.email.split('@')[0]}
+            </span>
+            <span style={{ fontSize: "10px", color: "#666", transform: showProfileMenu ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>▼</span>
+          </div>
+
+          {/* BẢNG MENU XỔ XUỐNG */}
+          {showProfileMenu && (
+            <>
+              {/* Vùng vô hình: Bấm ra ngoài là tự đóng menu */}
+              <div onClick={() => setShowProfileMenu(false)} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", zIndex: 998 }}></div>
+              
+              {/* Nội dung Menu */}
+              <div style={{ position: "absolute", top: "45px", right: 0, backgroundColor: "white", borderRadius: "12px", boxShadow: "0 10px 30px rgba(0,0,0,0.15)", width: "200px", overflow: "hidden", zIndex: 999, animation: "popIn 0.2s ease-out", border: "1px solid #eee" }}>
+                  <div style={{ padding: "15px", borderBottom: "1px solid #eee", backgroundColor: "#f8f9fa", textAlign: "left" }}>
+                     <div style={{ fontSize: "12px", color: "#666", marginBottom: "3px" }}>Đang đăng nhập:</div>
+                     <div style={{ fontSize: "13px", fontWeight: "bold", color: "#2196F3", overflow: "hidden", textOverflow: "ellipsis" }}>{currentUser.email}</div>
+                  </div>
+                  
+                  {/* NÚT CHỈNH SỬA HỒ SƠ (Đã gộp Đổi tên và Đổi ảnh) */}
+                  <button onClick={() => { playSound("click"); setShowProfileMenu(false); setProfileNameInput(currentUser.displayName || ""); setProfileAvatarFile(null); setAvatarPreview(null); setShowProfileModal(true); }} style={{ width: "100%", padding: "12px 15px", textAlign: "left", backgroundColor: "transparent", border: "none", cursor: "pointer", fontSize: "14px", color: "#333", display: "flex", alignItems: "center", gap: "10px", transition: "0.2s" }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#f5f5f5"} onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}>
+                     ⚙️ Chỉnh sửa hồ sơ
+                  </button>
+                  
+                  <div style={{ width: "100%", height: "1px", backgroundColor: "#eee" }}></div>
+                  
+                  <button onClick={() => { setShowProfileMenu(false); handleLogout(); }} style={{ width: "100%", padding: "12px 15px", textAlign: "left", backgroundColor: "transparent", border: "none", cursor: "pointer", fontSize: "14px", color: "#F44336", fontWeight: "bold", display: "flex", alignItems: "center", gap: "10px", transition: "0.2s" }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#ffebee"} onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}>
+                     🚪 Đăng xuất
+                  </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      <h1 style={{ fontSize: "2.2rem", margin: "10px 0", color: "#2c3e50" }}>TOEIC 🚀</h1>
-      <p style={{ color: "#7f8c8d", marginBottom: "25px" }}>Đã đồng bộ dữ liệu đám mây ☁️</p>
+      {/* HEADER MỚI - ĐỒNG HỒ & LỊCH VIP PRO */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "25px", marginTop: "10px" }}>
+          <div style={{ display: "flex", flexDirection: "column", textAlign: "left" }}>
+              <span style={{ fontSize: "32px", color: "#2c3e50", fontWeight: "900", lineHeight: "1.1", letterSpacing: "1px" }}>
+                  {currentFormattedTime}
+              </span>
+              <span style={{ fontSize: "13px", color: "#7f8c8d", marginTop: "5px", fontWeight: "bold" }}>
+                  📅 {currentFormattedDate}
+              </span>
+          </div>
+          {/* <span style={{ fontSize: "12px", color: "#e65100", fontWeight: "bold", padding: "6px 12px", backgroundColor: "#ffe0b2", borderRadius: "20px", border: "2px solid #ffb74d", boxShadow: "0 2px 4px rgba(0,0,0,0.05)" }}>
+              VIP PRO 👑
+          </span> */}
+      </div>
 
       {/* DASHBOARD THỐNG KÊ */}
       <div style={{ display: "flex", justifyContent: "center", gap: "10px", marginBottom: "35px", flexWrap: "wrap" }}>
@@ -3469,6 +3737,41 @@ function App() {
 
       </div>
 
+      {/* --- THANH TIẾN ĐỘ KỶ LUẬT THÉP (ĐÃ FIX LỖI SẬP WEB) --- */}
+      <div 
+         onClick={() => { playSound("click"); setShowPlanModal(true); }}
+         style={{ backgroundColor: "#fff", padding: "15px 20px", borderRadius: "16px", border: "2px dashed #FF9800", marginBottom: "25px", cursor: "pointer", boxShadow: "0 4px 10px rgba(0,0,0,0.05)", transition: "0.2s" }}
+         onMouseOver={(e) => e.currentTarget.style.transform = "scale(1.02)"}
+         onMouseOut={(e) => e.currentTarget.style.transform = "scale(1)"}
+      >
+         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+            <span style={{ fontSize: "16px", fontWeight: "bold", color: "#e65100" }}>🔥 Kỷ Luật Thép (Mỗi ngày)</span>
+            <span style={{ 
+                fontSize: "14px", 
+                backgroundColor: countdownText ? "#ffcdd2" : "#ffe0b2", // Đổi nền đỏ nhạt khi đếm ngược
+                color: countdownText ? "#d32f2f" : "#e65100", // Chữ đỏ đậm khi đếm ngược
+                padding: "4px 8px", 
+                borderRadius: "10px", 
+                fontWeight: "bold",
+                animation: countdownText ? "heartbeat 1s infinite" : "none", // Thêm chớp đỏ cảnh báo
+                boxShadow: countdownText ? "0 0 8px rgba(244, 67, 54, 0.4)" : "none"
+            }}>
+                {dailyTarget > 0 
+                    ? (countdownText ? countdownText : "⏰ Báo thức: " + studyTime) 
+                    : "Chưa cài đặt"}
+            </span>
+         </div>
+         
+         <div style={{ width: "100%", height: "12px", backgroundColor: "#f5f5f5", borderRadius: "6px", overflow: "hidden", border: "1px solid #eee" }}>
+            <div style={{ width: (dailyTarget > 0 ? Math.min((todayMasteredCount / dailyTarget) * 100, 100) : 0) + "%", height: "100%", backgroundColor: todayMasteredCount >= dailyTarget && dailyTarget > 0 ? "#4CAF50" : "#FF9800", transition: "width 0.5s ease-out" }}></div>
+         </div>
+         
+         <div style={{ display: "flex", justifyContent: "space-between", marginTop: "8px", fontSize: "14px", color: "#666", fontWeight: "bold" }}>
+             <span>Hôm nay: {todayMasteredCount} từ</span>
+             <span>Mục tiêu: {dailyTarget > 0 ? dailyTarget + " từ" : "Nhấn để cài đặt"}</span>
+         </div>
+      </div>
+
       {/* MENU CHÍNH */}
       {/* MENU CHÍNH DẠNG 4 Ô VƯƠNG CÂN ĐỐI */}
       <ModeSelectionScreen 
@@ -3496,6 +3799,131 @@ function App() {
           60% { transform: scale(1); }
         }
       `}</style>
+
+        {/* --- MODAL ĐỔI TÊN HIỂN THỊ --- */}
+      {showNameModal && (
+        <div onClick={() => !isUpdatingName && setShowNameModal(false)} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.6)", zIndex: 1100, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px", boxSizing: "border-box" }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: "white", width: "100%", maxWidth: "350px", borderRadius: "16px", padding: "25px", textAlign: "center", animation: "popIn 0.3s", boxShadow: "0 10px 30px rgba(0,0,0,0.3)", cursor: "default" }}>
+                <h2 style={{ fontSize: "22px", color: "#2c3e50", margin: "0 0 15px 0" }}>✏️ Đổi Tên Của Bạn</h2>
+                <input 
+                    type="text" 
+                    value={newNameInput} 
+                    onChange={(e) => setNewNameInput(e.target.value)}
+                    // placeholder="Ví dụ: Đạt VIP Pro..."
+                    maxLength={20}
+                    autoFocus
+                    style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #ccc", fontSize: "16px", marginBottom: "20px", boxSizing: "border-box", textAlign: "center", fontWeight: "bold", outline: "none" }}
+                />
+                <div style={{ display: "flex", gap: "10px" }}>
+                    <button disabled={isUpdatingName} onClick={handleUpdateName} style={{ flex: 1, padding: "12px", backgroundColor: isUpdatingName ? "#9e9e9e" : "#4CAF50", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: isUpdatingName ? "not-allowed" : "pointer" }}>
+                        {isUpdatingName ? "Đang lưu..." : "Lưu thay đổi"}
+                    </button>
+                    <button disabled={isUpdatingName} onClick={() => setShowNameModal(false)} style={{ flex: 1, padding: "12px", backgroundColor: "#e0e0e0", color: "#333", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
+                        Hủy
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* --- MODAL ĐỔI PROFILE VIP PRO MAX (TÊN + ẢNH) --- */}
+      {showProfileModal && (
+        <div onClick={() => !isUpdatingProfile && setShowProfileModal(false)} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.6)", zIndex: 1100, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px", boxSizing: "border-box" }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: "white", width: "100%", maxWidth: "380px", borderRadius: "16px", padding: "25px", textAlign: "center", animation: "popIn 0.3s", boxShadow: "0 10px 30px rgba(0,0,0,0.3)", cursor: "default", border: "1px solid #eee" }}>
+                <h2 style={{ fontSize: "22px", color: "#2c3e50", margin: "0 0 20px 0" }}>⚙️ Cài Đặt Hồ Sơ</h2>
+                
+                {/* 1. KHU VỰC ẢNH ĐẠI DIỆN TRÒN */}
+                <div style={{ position: "relative", width: "100px", height: "100px", margin: "0 auto 20px auto", cursor: "pointer" }} onClick={() => document.getElementById('avatarInput').click()} title="Bấm để chọn ảnh mới">
+                    {/* Hiển thị ảnh đang xem trước (preview) hoặc ảnh cũ ( photoURL ) hoặc lấy chữ cái đầu */}
+                    {avatarPreview || currentUser.photoURL ? (
+                       <img src={avatarPreview || currentUser.photoURL} alt="Avatar Preview" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover", border: "4px solid #fff", boxShadow: "0 3px 10px rgba(0,0,0,0.15)", transition: "0.2s" }} />
+                    ) : (
+                       <div style={{ width: "100%", height: "100%", borderRadius: "50%", backgroundColor: "#4facfe", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "40px", fontWeight: "bold", border: "4px solid #fff", boxShadow: "0 3px 10px rgba(0,0,0,0.15)" }}>
+                          {currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : currentUser.email.charAt(0).toUpperCase()}
+                       </div>
+                    )}
+                    {/* Biểu tượng cái bút đè lên trên ảnh đại diện */}
+                    <div style={{ position: "absolute", bottom: "0", right: "0", backgroundColor: "white", padding: "6px", borderRadius: "50%", boxShadow: "0 2px 5px rgba(0,0,0,0.2)" }}>
+                       ✏️
+                    </div>
+                </div>
+                
+                {/* THANH TIẾN TRÌNH UPLOAD 0-100% (Ẩn khi không upload) */}
+                {isUpdatingProfile && uploadProgress > 0 && uploadProgress < 100 && (
+                   <div style={{ width: "100%", height: "5px", backgroundColor: "#e0e0e0", borderRadius: "5px", margin: "0 auto 15px auto", overflow: "hidden" }}>
+                       <div style={{ width: `${uploadProgress}%`, height: "100%", backgroundColor: "#4CAF50", transition: "width 0.1s" }}></div>
+                   </div>
+                )}
+
+                {/* Ô INPUT CHỌN FILE (ẨN ĐI) */}
+                <input 
+                    id="avatarInput"
+                    type="file" 
+                    accept="image/*" // Chỉ nhận ảnh
+                    onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                            if (file.size > 2 * 1024 * 1024) { return alert("File chà bá chè bác! Bác chọn ảnh nào dưới 2MB nhé!"); } // Giới hạn 2MB
+                            setProfileAvatarFile(file);
+                            setAvatarPreview(URL.createObjectURL(file)); // Tạo link xem trước ngay lập tức
+                        }
+                    }}
+                    style={{ display: "none" }}
+                />
+
+                {/* 2. KHU VỰC ĐỔI TÊN */}
+                <div style={{ textAlign: "left", marginBottom: "25px" }}>
+                   <label style={{ fontSize: "14px", color: "#666", fontWeight: "bold", marginLeft: "2px" }}>Tên hiển thị (Tối đa 20 chữ)</label>
+                   <input 
+                       type="text" 
+                       value={profileNameInput} 
+                       onChange={(e) => setProfileNameInput(e.target.value)}
+                      //  placeholder="Ví dụ: Đạt VIP Pro..."
+                       maxLength={20}
+                       style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #ccc", fontSize: "16px", marginTop: "5px", boxSizing: "border-box", fontWeight: "bold", outline: "none", backgroundColor: isUpdatingProfile ? "#f5f5f5" : "#fff" }}
+                       disabled={isUpdatingProfile}
+                   />
+                </div>
+
+                {/* 3. NÚT CHỨC NĂNG */}
+                <div style={{ display: "flex", gap: "10px" }}>
+                    <button disabled={isUpdatingProfile} onClick={handleProfileUpdate} style={{ flex: 1, padding: "12px", backgroundColor: isUpdatingProfile ? "#9e9e9e" : "#4CAF50", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: isUpdatingProfile ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+                        {isUpdatingProfile ? `Đang lưu (${uploadProgress}%)...` : "Lưu thay đổi"}
+                    </button>
+                    <button disabled={isUpdatingProfile} onClick={() => setShowProfileModal(false)} style={{ flex: 1, padding: "12px", backgroundColor: "#e0e0e0", color: "#333", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
+                        Hủy
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* --- MODAL CÀI ĐẶT KẾ HOẠCH HỌC TẬP (KỶ LUẬT THÉP) --- */}
+      {showPlanModal && (
+        <div onClick={() => setShowPlanModal(false)} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.7)", zIndex: 1200, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px", boxSizing: "border-box" }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: "white", width: "100%", maxWidth: "350px", borderRadius: "20px", padding: "25px", textAlign: "center", animation: "popIn 0.3s", boxShadow: "0 10px 30px rgba(0,0,0,0.3)", cursor: "default", border: "2px solid #FF9800" }}>
+                <h2 style={{ fontSize: "24px", color: "#e65100", margin: "0 0 5px 0" }}>🔥 Kỷ Luật Thép</h2>
+                <p style={{ color: "#666", fontSize: "13px", marginBottom: "20px" }}>Đã bật chế độ này, bạn sẽ <strong>BỊ KHÓA NÚT THOÁT</strong> cho đến khi học đủ số câu quy định.</p>
+                
+                <div style={{ textAlign: "left", marginBottom: "15px" }}>
+                   <label style={{ fontSize: "14px", color: "#333", fontWeight: "bold" }}>🎯 Mục tiêu số câu đúng/ngày:</label>
+                   <input type="number" min="0" max="500" value={dailyTarget} onChange={(e) => setDailyTarget(parseInt(e.target.value) || 0)} style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #ccc", fontSize: "18px", marginTop: "5px", boxSizing: "border-box", fontWeight: "bold", textAlign: "center", color: "#4CAF50" }} />
+                   <p style={{ fontSize: "11px", color: "#999", marginTop: "5px" }}>*Nhập số 0 để Tắt chế độ giam lỏng.</p>
+                </div>
+
+                <div style={{ textAlign: "left", marginBottom: "25px" }}>
+                   <label style={{ fontSize: "14px", color: "#333", fontWeight: "bold" }}>⏰ Giờ báo thức (Gửi thông báo):</label>
+                   <input type="time" value={studyTime} onChange={(e) => setStudyTime(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #ccc", fontSize: "18px", marginTop: "5px", boxSizing: "border-box", fontWeight: "bold", textAlign: "center", fontFamily: "inherit" }} />
+                </div>
+
+                <div style={{ display: "flex", gap: "10px" }}>
+                    <button onClick={saveStudyPlan} style={{ flex: 1, padding: "12px", backgroundColor: "#FF9800", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer", fontSize: "16px" }}>Lưu Kế Hoạch</button>
+                    <button onClick={() => setShowPlanModal(false)} style={{ flex: 1, padding: "12px", backgroundColor: "#e0e0e0", color: "#333", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>Đóng</button>
+                </div>
+            </div>
+        </div>
+      )}
+
     </div>
   );
 }
