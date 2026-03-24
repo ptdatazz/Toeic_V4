@@ -394,7 +394,7 @@ function QuizSettings({ mode, onStart, onBack, customWordsCount = 0 }) {
 }
 
 // --- COMPONENT: ÔN TẬP TỪ VỰNG / COLLOCATION CHÍNH ---
-function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isMusicPlaying }) {
+function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings, stats, isMusicPlaying }) {
   const DIFFICULTY_LEVEL = settings.difficultyLevel;
   const QUIZ_LIMIT = DIFFICULTY_LEVEL >= 3 ? 999 : settings.quizLimit; 
   const TIME_PER_QUESTION = settings.timePerQuestion;
@@ -426,6 +426,43 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isM
 
   // THÊM: State lưu trữ đáp án cho câu hỏi Crossword Boss
   const [crosswordInputs, setCrosswordInputs] = useState({});
+  const [bossMastered, setBossMastered] = useState({});
+  const [bossHinted, setBossHinted] = useState({});
+
+  const handleBossHint = (idx, targetCleanWord) => {
+      playSound("click");
+      let currentVal = (crosswordInputs[idx] || "").split("");
+      let targetArr = targetCleanWord.split("");
+      
+      let wrongIndices = [];
+      for(let i = 0; i < targetArr.length; i++) {
+          if ((currentVal[i] || "").toLowerCase() !== targetArr[i].toLowerCase()) {
+              wrongIndices.push(i);
+          }
+      }
+
+      
+      if (wrongIndices.length > 0) {
+          // Điền đúng 1 chữ cái đang bị sai/thiếu đầu tiên
+          let indexToFix = wrongIndices[0];
+          currentVal[indexToFix] = targetArr[indexToFix].toUpperCase();
+          
+          // NẾU TỪ DÀI HƠN 5 CHỮ CÁI -> Khuyến mãi thêm 1 chữ nữa cho nhanh!
+          if (wrongIndices.length > 2 && targetArr.length >= 5) {
+             let secondIndex = wrongIndices[1];
+             currentVal[secondIndex] = targetArr[secondIndex].toUpperCase();
+          }
+          
+          setCrosswordInputs({...crosswordInputs, [idx]: currentVal.join("")});
+      }
+      if (wrongIndices.length > 0) {
+          // ... (Phần logic gợi ý giữ nguyên)
+          setCrosswordInputs({...crosswordInputs, [idx]: currentVal.join("")});
+          
+          // BƯỚC 2: Thêm dòng này vào cuối hàm để ghi chú là "đã dùng hint" cho ô này
+          setBossHinted({...bossHinted, [idx]: true}); 
+      }
+  };
 
   // THÊM: State quản lý nhập từ khóa bí mật và AI giải thích
   const [keywordInput, setKeywordInput] = useState("");
@@ -1300,53 +1337,84 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, settings, stats, isM
              })}
           </div>
 
-          {/* KHUNG NHẬP LIỆU CÂU HỎI */}
+          {/* KHUNG NHẬP LIỆU CÂU HỎI (ĐÃ NÂNG CẤP GỢI Ý + LƯU SỔ TAY) */}
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
              {currentQ.words.map((item, idx) => {
                  const isCorrect = (crosswordInputs[idx] || "").toLowerCase().trim() === item.cleanWord.toLowerCase().trim();
                  return (
-                     <div key={`input-${idx}`} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px", backgroundColor: isCorrect ? "#e8f5e9" : "#fff", borderRadius: "8px", border: "1px solid #ddd" }}>
-                         <div style={{ width: "30px", height: "30px", borderRadius: "50%", backgroundColor: "#2196F3", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" }}>{idx + 1}</div>
+                     <div key={`input-${idx}`} style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px", backgroundColor: isCorrect ? "#e8f5e9" : "#fff", borderRadius: "8px", border: isCorrect ? "2px solid #4CAF50" : "1px solid #ddd" }}>
+                         
+                         {/* Cột 1: Số thứ tự */}
+                         <div style={{ width: "28px", height: "28px", borderRadius: "50%", backgroundColor: isCorrect ? "#4CAF50" : "#2196F3", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold", flexShrink: 0, marginTop: "2px" }}>{idx + 1}</div>
+                         
+                         {/* Cột 2: Nội dung */}
                          <div style={{ flex: 1 }}>
-                             <div style={{ fontSize: "13px", fontWeight: "bold", color: "#555", marginBottom: "4px" }}>{item.meaning}</div>
-                             <input
-                                 ref={(el) => bossInputRefs.current[idx] = el} 
-                                 type="email" // Đổi thành email để chặn Unikey
-                                 value={crosswordInputs[idx] || ""}
-                                 onChange={(e) => {
-                                     const val = e.target.value.replace(/[^a-zA-Z\s-]/g, '');
-                                     setCrosswordInputs({...crosswordInputs, [idx]: val});
-                                     
-                                     // CƠ CHẾ AUTO-FOCUS: Gõ đúng tự nhảy sang ô chưa hoàn thành
-                                     if (val.toLowerCase().trim() === item.cleanWord.toLowerCase().trim()) {
-                                         let nextIdx = -1;
-                                         // Tìm ô trống ở phía dưới
-                                         for (let i = idx + 1; i < currentQ.words.length; i++) {
-                                             const targetWord = currentQ.words[i].cleanWord.toLowerCase().trim();
-                                             const curVal = (crosswordInputs[i] || "").toLowerCase().trim();
-                                             if (curVal !== targetWord) { nextIdx = i; break; }
-                                         }
-                                         // Nếu bên dưới hết ô trống, vòng lên tìm lại phía trên
-                                         if (nextIdx === -1) {
-                                             for (let i = 0; i < idx; i++) {
+                             <div style={{ fontSize: "14px", fontWeight: "bold", color: "#444", marginBottom: "6px", lineHeight: "1.4" }}>{item.meaning}</div>
+                             
+                             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                 <input
+                                     ref={(el) => bossInputRefs.current[idx] = el} 
+                                     type="email"
+                                     value={crosswordInputs[idx] || ""}
+                                     onChange={(e) => {
+                                         const val = e.target.value.replace(/[^a-zA-Z\s-]/g, '');
+                                         setCrosswordInputs({...crosswordInputs, [idx]: val});
+                                         
+                                         if (val.toLowerCase().trim() === item.cleanWord.toLowerCase().trim()) {
+                                             let nextIdx = -1;
+                                             for (let i = idx + 1; i < currentQ.words.length; i++) {
                                                  const targetWord = currentQ.words[i].cleanWord.toLowerCase().trim();
                                                  const curVal = (crosswordInputs[i] || "").toLowerCase().trim();
                                                  if (curVal !== targetWord) { nextIdx = i; break; }
                                              }
+                                             if (nextIdx === -1) {
+                                                 for (let i = 0; i < idx; i++) {
+                                                     const targetWord = currentQ.words[i].cleanWord.toLowerCase().trim();
+                                                     const curVal = (crosswordInputs[i] || "").toLowerCase().trim();
+                                                     if (curVal !== targetWord) { nextIdx = i; break; }
+                                                 }
+                                             }
+                                             if (nextIdx !== -1 && bossInputRefs.current[nextIdx]) {
+                                                 setTimeout(() => bossInputRefs.current[nextIdx].focus(), 50);
+                                             }
                                          }
-                                         // Di chuyển con trỏ chuột sang ô tiếp theo
-                                         if (nextIdx !== -1 && bossInputRefs.current[nextIdx]) {
-                                             setTimeout(() => bossInputRefs.current[nextIdx].focus(), 50);
-                                         }
-                                     }
-                                 }}
-                                 disabled={isCorrect}
-                                 maxLength={item.cleanWord.length}
-                                 placeholder={`${item.cleanWord.length} chữ cái...`}
-                                 style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #ccc", textTransform: "uppercase", outline: "none", backgroundColor: isCorrect ? "#c8e6c9" : "#fff", fontWeight: "bold" }}
-                             />
+                                     }}
+                                     disabled={isCorrect}
+                                     maxLength={item.cleanWord.length}
+                                     placeholder={`${item.cleanWord.length} CHỮ CÁI...`}
+                                     style={{ flex: 1, padding: "10px", borderRadius: "6px", border: "1px solid #ccc", textTransform: "uppercase", outline: "none", backgroundColor: isCorrect ? "#c8e6c9" : "#f9f9f9", fontWeight: "bold", fontSize: "15px", letterSpacing: "1px", minWidth: "0" }}
+                                 />
+                                 
+                                 {/* NÚT CHỨC NĂNG BÊN PHẢI INPUT */}
+                                 {!isCorrect ? (
+                                     <button 
+                                         onClick={() => handleBossHint(idx, item.cleanWord)}
+                                         style={{ padding: "10px", backgroundColor: "#FF9800", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 4px rgba(0,0,0,0.1)", flexShrink: 0 }}
+                                         title="Nhận gợi ý chữ cái"
+                                     >
+                                         💡
+                                     </button>
+                                 ) : (
+                                     bossMastered[idx] ? (
+                                         <span style={{ padding: "10px 0", color: "#2e7d32", fontWeight: "bold", fontSize: "14px", whiteSpace: "nowrap", flexShrink: 0 }}>✅ Đã lưu</span>
+                                     ) : (
+                                         <button 
+                                             onClick={() => { 
+                                                 playSound("click");
+                                                 onMoveWord(mode, "savedWords", "masteredWords", item.word); 
+                                                 setBossMastered({...bossMastered, [idx]: true}); 
+                                             }}
+                                             // Nếu 'bossHinted[idx]' là true ->Disabled, đổi màu sang xám
+                                             disabled={bossHinted[idx]}
+                                             style={{ padding: "10px 12px", backgroundColor: bossHinted[idx] ? "#9e9e9e" : "#4CAF50", color: "white", border: "none", borderRadius: "6px", cursor: bossHinted[idx] ? "not-allowed" : "pointer", fontWeight: "bold", whiteSpace: "nowrap", boxShadow: "0 2px 4px rgba(0,0,0,0.1)", fontSize: "13px", flexShrink: 0, transition: "0.2s" }}
+                                             title={bossHinted[idx] ? "Vì bạn đã dùng gợi ý cho từ này nên không thể lưu là 'Đã thuộc'." : "Chuyển vào Ô xanh trong Sổ tay"}
+                                         >
+                                             ⭐ Đã thuộc
+                                         </button>
+                                     )
+                                 )}
+                             </div>
                          </div>
-                         {isCorrect && <span style={{ fontSize: "20px" }}>✅</span>}
                      </div>
                  )
              })}
@@ -2427,6 +2495,58 @@ const BGM_PLAYLIST = [
 const globalBgm = new Audio();
 globalBgm.loop = false;
 
+// --- COMPONENT MỚI: MÀN HÌNH CHỌN CHẾ ĐỘ HỌC DẠNG Ô (ĐÃ TỐI GIẢN) ---
+function ModeSelectionScreen({ onModeSelect, onNotebookClick }) {
+    // Helper function để tạo từng ô
+    const renderModeBox = (title, icon, bgColor, screenTarget) => (
+        <div 
+            onClick={() => {
+                if (screenTarget === "notebook") {
+                    onNotebookClick();
+                } else {
+                    onModeSelect(screenTarget);
+                }
+            }}
+            style={{
+                flex: 1,
+                aspectRatio: "1 / 1", // Giữ ô hình vuông chuẩn
+                borderRadius: "20px",
+                backgroundColor: bgColor,
+                color: "white",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                padding: "20px",
+                boxShadow: "0 6px 15px rgba(0,0,0,0.15)",
+                transition: "0.2s",
+                userSelect: "none"
+            }}
+            // Hiệu ứng búng nhẹ khi di chuột vào (trên PC)
+            onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.05)"}
+            onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+        >
+            <span style={{ fontSize: "50px", marginBottom: "12px", filter: "drop-shadow(0px 4px 4px rgba(0,0,0,0.2))" }}>{icon}</span>
+            <span style={{ fontSize: "17px", fontWeight: "bold", textAlign: "center", textShadow: "0px 1px 2px rgba(0,0,0,0.3)" }}>{title}</span>
+        </div>
+    );
+
+    return (
+        <div className="container" style={{ textAlign: "center", paddingTop: "10px", maxWidth: "450px" }}>
+            {/* ĐÃ XÓA DÒNG CHỮ "Chọn Chế Độ Học" Ở ĐÂY ĐỂ GIAO DIỆN GỌN HƠN */}
+            
+            {/* GRID ĐÚNG 4 Ô CÂN ĐỐI */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                {renderModeBox("Sổ Tay", "📖", "#FF9800", "notebook")}
+                {renderModeBox("Ôn Từ Vựng", "🚀", "#4CAF50", "vocab_settings")}
+                {renderModeBox("Ôn Colloc.", "📚", "#9C27B0", "collocation_settings")}
+                {renderModeBox("Ôn Ngữ Pháp", "📐", "#2196F3", "grammar_settings")}
+            </div>
+        </div>
+    );
+}
+
 // =======================================================================
 // COMPONENT: SỔ TAY TÍCH HỢP AI + SỬA BẰNG TAY (MANUAL EDIT) XỊN SÒ
 // =======================================================================
@@ -3238,10 +3358,12 @@ function App() {
   }
   // Line ~1170
   if (screen === "notebook") return <NotebookScreen globalStats={globalStats} onBack={() => { playSound("click"); setScreen("home"); }} onSaveWord={handleSaveDifficultWord} onRemoveWord={handleRemoveWord} onMoveWord={handleMoveWord} />;
-  if (screen === "vocab") return <WordQuiz mode="vocab" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} settings={quizSettings} stats={globalStats.vocab} isMusicPlaying={isMusicPlaying} />;
-  if (screen === "collocation") return <WordQuiz mode="collocation" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} settings={quizSettings} stats={globalStats.collocation} isMusicPlaying={isMusicPlaying} />;
-  if (screen === "grammar") return <GrammarQuiz onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} settings={quizSettings} learnedQuestions={globalStats.grammar.learnedWords || []} />;
-
+  
+  // ĐÃ FIX BƯỚC 1: Truyền thêm onMoveWord={handleMoveWord} vào 2 dòng này
+  if (screen === "vocab") return <WordQuiz mode="vocab" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} stats={globalStats.vocab} isMusicPlaying={isMusicPlaying} />;
+  if (screen === "collocation") return <WordQuiz mode="collocation" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} stats={globalStats.collocation} isMusicPlaying={isMusicPlaying} />;
+  if (screen === "grammar") return <GrammarQuiz onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} learnedQuestions={globalStats.grammar.learnedWords || []} />;
+  
   // --- TÍNH TOÁN THÔNG SỐ TỪ VỰNG ---
   const vocabTotal = globalStats.vocab.total;
   const vocabCorrect = globalStats.vocab.correct;
@@ -3300,7 +3422,7 @@ function App() {
         </div>
       </div>
 
-      <h1 style={{ fontSize: "2.2rem", margin: "10px 0", color: "#2c3e50" }}>TOEIC Master 🚀</h1>
+      <h1 style={{ fontSize: "2.2rem", margin: "10px 0", color: "#2c3e50" }}>TOEIC 🚀</h1>
       <p style={{ color: "#7f8c8d", marginBottom: "25px" }}>Đã đồng bộ dữ liệu đám mây ☁️</p>
 
       {/* DASHBOARD THỐNG KÊ */}
@@ -3348,21 +3470,17 @@ function App() {
       </div>
 
       {/* MENU CHÍNH */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "15px", maxWidth: "300px", margin: "0 auto" }}>
-        {/* NÚT VÀO SỔ TAY */}
-        <button onClick={() => { playSound("click"); setScreen("notebook"); }} style={{ padding: "15px", fontSize: "18px", backgroundColor: "#FF9800", color: "white", borderRadius: "10px", border: "none", cursor: "pointer", boxShadow: "0 4px 6px rgba(0,0,0,0.1)", transition: "transform 0.2s", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }} onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-3px)"} onMouseOut={(e) => e.currentTarget.style.transform = "translateY(0)"}>
-          📖 Xem Sổ Tay Của Tôi
-        </button>
-        <button onClick={() => { playSound("click"); setScreen("vocab_settings"); }} style={{ padding: "15px", fontSize: "18px", backgroundColor: "#4CAF50", color: "white", borderRadius: "10px", border: "none", cursor: "pointer", boxShadow: "0 4px 6px rgba(0,0,0,0.1)", transition: "transform 0.2s" }} onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-3px)"} onMouseOut={(e) => e.currentTarget.style.transform = "translateY(0)"}>
-          Bắt đầu luyện Từ Vựng
-        </button>
-        <button onClick={() => { playSound("click"); setScreen("collocation_settings"); }} style={{ padding: "15px", fontSize: "18px", backgroundColor: "#9C27B0", color: "white", borderRadius: "10px", border: "none", cursor: "pointer", boxShadow: "0 4px 6px rgba(0,0,0,0.1)", transition: "transform 0.2s" }} onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-3px)"} onMouseOut={(e) => e.currentTarget.style.transform = "translateY(0)"}>
-          Bắt đầu luyện Collocation
-        </button>
-        <button onClick={() => { playSound("click"); setScreen("grammar_settings"); }} style={{ padding: "15px", fontSize: "18px", backgroundColor: "#2196F3", color: "white", borderRadius: "10px", border: "none", cursor: "pointer", boxShadow: "0 4px 6px rgba(0,0,0,0.1)", transition: "transform 0.2s", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }} onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-3px)"} onMouseOut={(e) => e.currentTarget.style.transform = "translateY(0)"}>
-          Bắt đầu luyện Ngữ Pháp ✨
-        </button>
-      </div>
+      {/* MENU CHÍNH DẠNG 4 Ô VƯƠNG CÂN ĐỐI */}
+      <ModeSelectionScreen 
+          onModeSelect={(targetScreen) => {
+              playSound("click");
+              setScreen(targetScreen); 
+          }}
+          onNotebookClick={() => {
+              playSound("click");
+              setScreen("notebook");
+          }}
+      />
 
       {/* Thêm CSS cho thanh cuộn vô tận của AI */}
       <style>{`
