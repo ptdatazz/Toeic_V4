@@ -1,5 +1,5 @@
 git add .
-git commit -m "Them hieu ung am thanh va nut dieu khien nhac"
+git commit -m "Cap nhat"
 git push
 
 npm run dev
