@@ -1830,6 +1830,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
           if (selection && !selection.isCollapsed) {
               const text = selection.toString().trim();
               if (text && text.split(/\s+/).length <= 40 && text.length < 300) {
+                setTooltipPos(true); 
                 setSelectedWord(text);
 
                     // Nếu màn hình rộng thì tra vào side panel, KHÔNG hiện bottom bar
@@ -2407,7 +2408,7 @@ return (
       flexDirection: "column",
       position: "fixed",
       top: "20px",
-      right: "20px",
+      right: "calc(60% - 680px)",
       width: "260px",
       maxHeight: "calc(100vh - 40px)",
       overflowY: "auto",
