@@ -230,7 +230,6 @@ function QuizSettings({ mode, onStart, onBack, customWordsCount = 0 }) {
           
           // ĐÃ FIX: Khóa an toàn, không cho Ngữ pháp dùng Level 0 (Flashcard)
           let diffLevel = parsedSettings.difficultyLevel !== undefined ? parsedSettings.difficultyLevel : 1;
-          if (mode === "grammar" && diffLevel === 0) diffLevel = 1;
           
           return { ...parsedSettings, difficultyLevel: diffLevel, toeicPart: parsedSettings.toeicPart || "part5", dataSource: parsedSettings.dataSource || "default" }; 
       }
@@ -322,7 +321,7 @@ function QuizSettings({ mode, onStart, onBack, customWordsCount = 0 }) {
           <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px", fontSize: "16px" }}>
             🔥 Level {settings.difficultyLevel}: 
             <span style={{ color: settings.difficultyLevel === 0 ? "#9C27B0" : settings.difficultyLevel === 1 ? primaryColor : settings.difficultyLevel === 2 ? "#FF9800" : settings.difficultyLevel === 3 ? "#E91E63" : "#F44336", marginLeft: "5px" }}>
-              {settings.difficultyLevel === 0 ? "Flashcard 🎴" : settings.difficultyLevel === 1 ? "Cơ Bản" : settings.difficultyLevel === 2 ? "Đa Dạng" : settings.difficultyLevel === 3 ? "Sinh Tồn ❤️" : "Time Attack ⏱️"}
+              {settings.difficultyLevel === 0 ? (mode === "grammar" ? "Tự Do ⏳" : "Flashcard 🎴") : settings.difficultyLevel === 1 ? "Cơ Bản" : settings.difficultyLevel === 2 ? "Đa Dạng" : settings.difficultyLevel === 3 ? "Sinh Tồn ❤️" : "Time Attack ⏱️"}
             </span>
           </label>
           <input 
@@ -827,6 +826,8 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
         }
     }
   }, [current, loadingData, questionsData, selected, isGameOver]);
+
+
 
   useEffect(() => {
     if (selected !== null || loadingData || isGameOver || DIFFICULTY_LEVEL === 4) return;
@@ -1784,7 +1785,9 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
   const [globalTime, setGlobalTime] = useState(DIFFICULTY_LEVEL === 4 ? settings.timeAttackSeconds : null);
 
   const [selected, setSelected] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(TIME_PER_QUESTION);
+  const IS_FREE_MODE = DIFFICULTY_LEVEL === 0;
+  const [timeLeft, setTimeLeft] = useState(IS_FREE_MODE ? null : TIME_PER_QUESTION);
+  const [elapsedTime, setElapsedTime] = useState(0); // Đếm thời gian đã làm
   const [answerStatus, setAnswerStatus] = useState(null); 
   const [streak, setStreak] = useState(0);
 
@@ -1795,8 +1798,9 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
   const [dictModal, setDictModal] = useState(null);
   // THAY BẰNG:
   const [isSaved, setIsSaved] = useState(false);
-  const [sidePanelResult, setSidePanelResult] = useState(null); // Kết quả hiện ở panel phải
+  const [sidePanelResult, setSidePanelResult] = useState(null);
   const [sidePanelLoading, setSidePanelLoading] = useState(false);
+  const sidePanelLockRef = useRef(false); // Chống spam gọi đồng thời
 
   // 1. TẢI TỪ ĐIỂN GOOGLE SHEET NGAY KHI VÀO GAME ĐỂ DÙNG DẦN
   useEffect(() => {
@@ -1840,35 +1844,52 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
                       setSidePanelLoading(true);
                       setSidePanelResult(null);
 
-                      const foundInSheet = vocabDict.find(item => item.word && item.word.toLowerCase().trim() === cleanWord);
-                      if (foundInSheet) {
-                          setSidePanelResult({ word: cleanWord, status: 'found_sheet', data: foundInSheet });
-                          setSidePanelLoading(false);
-                          return;
-                      }
+                      const foundInSheet = vocabDict.find(item => {
+                          if (!item.word) return false;
+                          const dictWord = item.word.toLowerCase().trim().replace(/\s*\(.*?\)\s*/g, '').trim();
+                          const searched = cleanWord.toLowerCase().trim();
+                          return dictWord === searched || dictWord.startsWith(searched) || searched.startsWith(dictWord);
+                      });
 
+                      if (sidePanelLockRef.current) return; // Chống spam
+                      sidePanelLockRef.current = true;
                       try {
-                          const GEMINI_API_KEY = getActiveKey();
-                          if (!window.globalCachedModel) {
-                              const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
-                              const listData = await listRes.json();
-                              const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods?.includes("generateContent"));
-                              const flashModel = textModels.find(m => m.name.includes("flash"));
-                              window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
-                          }
-                          const prompt = `Phân tích từ/cụm từ tiếng Anh: "${cleanWord}". Trả về CHỈ 1 OBJECT JSON: {"word": "Từ chuẩn kèm loại từ", "phonetic": "Phiên âm", "meaning": "(Đồng nghĩa) - Nghĩa tiếng Việt ngắn gọn.", "usage": "1 ví dụ"}`;
-                          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${GEMINI_API_KEY}`, {
-                              method: "POST", headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-                          });
-                          const data = await res.json();
-                          let rawText = data.candidates[0].content.parts[0].text;
-                          rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-                          setSidePanelResult({ word: cleanWord, status: 'found_ai', data: JSON.parse(rawText) });
+                          const doLookup = async () => {
+                              const GEMINI_API_KEY = getActiveKey();
+                              if (!window.globalCachedModel) {
+                                  const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
+                                  const listData = await listRes.json();
+                                  const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods?.includes("generateContent"));
+                                  const flashModel = textModels.find(m => m.name.includes("flash"));
+                                  window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
+                              }
+                              const prompt = `Phân tích từ/cụm từ tiếng Anh: "${cleanWord}". Trả về CHỈ 1 OBJECT JSON: {"word": "Từ chuẩn kèm loại từ", "phonetic": "Phiên âm", "meaning": "Nghĩa tiếng Việt ngắn gọn", "synonyms": "từ đồng nghĩa 1, từ đồng nghĩa 2", "usage": "1 ví dụ"}`;
+                              const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${getActiveKey()}`, {
+                                  method: "POST", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                              });
+                              const data = await res.json();
+                              if (data.error) {
+                                  const msg = data.error.message?.toLowerCase() || "";
+                                  if (msg.includes("quota") || msg.includes("expired") || data.error.code === 429) {
+                                      window.globalCachedModel = null;
+                                      if (rotateKey()) {
+                                          await new Promise(r => setTimeout(r, 1000));
+                                          return doLookup(); // Thử lại với key mới
+                                      }
+                                  }
+                                  throw new Error(data.error.message);
+                              }
+                              let rawText = data.candidates[0].content.parts[0].text;
+                              rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+                              setSidePanelResult({ word: cleanWord, status: 'found_ai', data: JSON.parse(rawText) });
+                          };
+                          await doLookup();
                       } catch(e) {
                           setSidePanelResult({ word: cleanWord, status: 'error', data: null });
                       } finally {
                           setSidePanelLoading(false);
+                          sidePanelLockRef.current = false; // Mở khóa
                       }
                   }
                   return;
@@ -1921,7 +1942,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
 
           const prompt = `Phân tích từ/cụm từ tiếng Anh: "${cleanWord}". (Lưu ý: Nếu từ bị dính chữ, hãy tự động sửa thành đúng chính tả).
           Trả về CHỈ 1 OBJECT JSON ĐƠN GIẢN:
-          {"word": "Từ chuẩn kèm loại từ", "phonetic": "Phiên âm", "meaning": "(Đồng nghĩa) - Nghĩa tiếng Việt ngắn gọn.", "usage": "1 ví dụ"}`;
+          {"word": "Từ chuẩn kèm loại từ", "phonetic": "Phiên âm", "meaning": "Nghĩa tiếng Việt ngắn gọn (1 dòng)", "synonyms": "từ đồng nghĩa 1, từ đồng nghĩa 2", "usage": "1 ví dụ"}`;
 
           const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${GEMINI_API_KEY}`, {
               method: "POST", headers: { "Content-Type": "application/json" },
@@ -1971,7 +1992,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
 
           let prompt = type === "grammar"
             ? `Giải thích cấu trúc ngữ pháp: "${cleanWord}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON:\n{"word": "${cleanWord}", "phonetic": "Công thức", "meaning": "Cách sử dụng cốt lõi", "usage": "1 ví dụ"}`
-            : `Phân tích cụm từ tiếng Anh: "${cleanWord}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON:\n{"word": "Từ vựng (kèm từ loại)", "phonetic": "Phiên âm", "meaning": "(Đồng nghĩa) - Nghĩa tiếng Việt.", "usage": "1 ví dụ"}`;
+            : `Phân tích cụm từ tiếng Anh: "${cleanWord}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON:\n{"word": "Từ vựng (kèm từ loại)", "phonetic": "Phiên âm", "meaning": "Nghĩa tiếng Việt ngắn gọn (1 dòng)", "synonyms": "từ đồng nghĩa 1, từ đồng nghĩa 2", "usage": "1 ví dụ"}`;
 
           // ĐÃ THÊM LỚP BẢO VỆ MIME_TYPE
           const requestBody = { contents: [{ parts: [{ text: prompt }] }] };
@@ -2007,12 +2028,13 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
 
   // ====================== SINH ĐỀ AI (ĐÃ CHẮN LẶP) ======================
   const isFetchingRef = useRef(false);
+  const fetchGrammarFromAI = useRef(null);
 
   useEffect(() => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
-    const fetchGrammarFromAI = async () => {
+    fetchGrammarFromAI.current = async () => {
       const GEMINI_API_KEY = getActiveKey();
       if (!GEMINI_API_KEY || String(GEMINI_API_KEY).includes("DÁN_MÃ")) {
         alert("LỖI: Không tìm thấy API Key!");
@@ -2033,53 +2055,99 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
         avoidedList = "Chưa có câu nào.";
       }
 
-      // Prompt cũ của bạn + thêm phần tránh lặp
-      let partInstruction = "";
-      if (TOEIC_PART === "part5") {
-        partInstruction = `- Trường "passage": để rỗng "".\n- Trường "question": Tạo 1 câu tiếng Anh FORMAT CHUẨN ETS có đúng 1 chỗ trống (___).`;
-      } else if (TOEIC_PART === "part6") {
-        partInstruction = `- Trường "passage": Tạo 1 đoạn văn ngắn (email, thông báo...) và đục đúng 1 lỗ (___).`;
-      } else if (TOEIC_PART === "part7") {
-        partInstruction = `- Trường "passage": Tạo 1 đoạn văn hoàn chỉnh.\n- Trường "question": Tạo 1 câu hỏi đọc hiểu.`;
-      } else if (TOEIC_PART === "scan_skim") {
-        partInstruction = `- Trường "passage": Tạo 1 văn bản dài.\n- Trường "question": Tạo câu hỏi skimming/scanning.`;
-      }
+      // Part 5: cấu trúc cũ - mảng câu hỏi thẳng
+      // Part 6/7/scan_skim: cấu trúc mới - mảng đoạn văn, mỗi đoạn có nhiều câu
+      const isPassageMode = ["part6", "part7", "scan_skim"].includes(TOEIC_PART);
+      const PASSAGE_TYPES = ["email", "thông báo nội bộ", "quảng cáo sản phẩm/dịch vụ", "bài báo kinh doanh", "thư mời", "hướng dẫn sử dụng", "thông cáo báo chí", "lịch trình công tác"];
+      const numPassages = Math.max(1, Math.ceil(QUIZ_LIMIT / (TOEIC_PART === "part7" ? 4 : 3)));
 
-    const prompt = `Bạn là chuyên gia luyện thi TOEIC chuẩn ETS.
-      Hãy tạo ${QUIZ_LIMIT} câu hỏi trắc nghiệm cho phần ${TOEIC_PART.toUpperCase()}.
+      let prompt = "";
 
-      YÊU CẦU BẮT BUỘC:
-      - KHÔNG ĐƯỢC lặp lại bất kỳ câu nào trong danh sách đã làm (nếu có).
-      - Trả về **DUY NHẤT 1 mảng JSON**, không có chữ thừa nào.
+      if (!isPassageMode) {
+        // PART 5: giữ nguyên cấu trúc cũ
+        prompt = `Bạn là chuyên gia luyện thi TOEIC chuẩn ETS.
+            Hãy tạo ${QUIZ_LIMIT} câu hỏi PART 5 (hoàn thành câu, điền từ).
+            - Trả về DUY NHẤT 1 mảng JSON, không có chữ thừa.
+            - Mỗi câu có đúng 1 chỗ trống (___), 4 đáp án, 1 đáp án đúng.
+            Cấu trúc:
+            [{
+              "passage": "",
+              "question": "Câu có ___ chỗ trống",
+              "options": ["A","B","C","D"],
+              "answer": "đáp án đúng",
+              "explanation": {
+                "translation": "Dịch câu hoàn chỉnh sang tiếng Việt",
+                "grammar_points": "Giải thích điểm ngữ pháp",
+                "wrong_options": "- đáp án: lý do sai (mỗi dòng 1 đáp án)",
+                "key_vocab": "- từ: nghĩa (mỗi dòng 1 từ)"
+              }
+            }]
+            Mức độ: ${DIFFICULTY_LEVEL <= 2 ? "Dễ - Trung bình" : "Khó"}`;
 
-      Cấu trúc mỗi câu:
-      {
-        "passage": "...",
-        "question": "...",
-        "options": ["will achieve", "has achieved", "achieve", "achieves"],   // KHÔNG có A. B. C. D.
-        "answer": "has achieved",                                            // Nội dung đầy đủ, KHÔNG có chữ cái
-        "explanation": {
-          "translation": "Dịch câu hoàn chỉnh (đã điền đáp án đúng) sang tiếng Việt",
-          "grammar_points": "Giải thích điểm ngữ pháp/cấu trúc đang dùng trong câu",
-          "wrong_options": "Tại sao các đáp án còn lại sai. Mỗi đáp án PHẢI trên 1 dòng riêng, bắt đầu bằng dấu gạch: - tên_đáp_án: lý do. KHÔNG được gộp nhiều đáp án vào 1 dòng.",
-          "key_vocab": "2-4 từ vựng quan trọng: từ - nghĩa tiếng Việt (mỗi từ 1 dòng, dùng dấu -)"
-        }
-      }
+                  } else {
+                    // PART 6/7/SCAN_SKIM: cấu trúc mới - đoạn văn + nhiều câu hỏi
+                    const questionsPerPassage = TOEIC_PART === "part7" ? 4 : 3;
+                    const passageTypeList = Array.from({length: numPassages}, (_, i) => PASSAGE_TYPES[i % PASSAGE_TYPES.length]).join(', ');
 
-Mức độ: ${DIFFICULTY_LEVEL <= 2 ? "Dễ - Trung bình" : "Khó"}`;
+                    const part6Instruction = `- Đoạn văn có đúng ${questionsPerPassage} chỗ trống được đánh số (___1___, ___2___, ___3___).
+            - Mỗi câu hỏi ứng với 1 chỗ trống theo thứ tự.
+            - "question": ghi rõ "Câu 1: Chọn từ điền vào ô ___1___" (tương tự cho 2, 3).`;
 
+                    const part7Instruction = `- Đoạn văn hoàn chỉnh KHÔNG có chỗ trống.
+            - Tạo ${questionsPerPassage} câu hỏi đọc hiểu đa dạng: hỏi ý chính, chi tiết, suy luận, từ vựng trong ngữ cảnh.
+            - "question": câu hỏi đọc hiểu thực sự (What is the purpose of...? / According to the passage...? / What can be inferred...?)`;
+
+                    const scanSkimInstruction = `- Đoạn văn dài, nhiều thông tin số liệu.
+            - Tạo ${questionsPerPassage} câu hỏi yêu cầu skimming (nắm ý chính) và scanning (tìm thông tin cụ thể).`;
+
+                    const partSpecific = TOEIC_PART === "part6" ? part6Instruction : TOEIC_PART === "part7" ? part7Instruction : scanSkimInstruction;
+
+                    prompt = `Bạn là chuyên gia luyện thi TOEIC chuẩn ETS.
+            Hãy tạo ${numPassages} đoạn văn cho phần ${TOEIC_PART.toUpperCase()}, mỗi đoạn có ${questionsPerPassage} câu hỏi.
+            Các loại văn bản (lần lượt): ${passageTypeList}.
+
+            YÊU CẦU:
+            ${partSpecific}
+            - Văn bản phải tự nhiên, chuyên nghiệp, đúng phong cách TOEIC ETS.
+            - Trả về DUY NHẤT 1 mảng JSON (mảng các đoạn văn), không có chữ thừa.
+
+            Cấu trúc mỗi đoạn:
+            {
+              "doc_type": "email",
+              "passage": "Toàn bộ đoạn văn ở đây (với ___1___ nếu là Part 6)",
+              "questions": [
+                {
+                  "question": "Câu hỏi 1",
+                  "options": ["","","",""],
+                  "answer": "đáp án đúng",
+                  "explanation": {
+                    "translation": "Dịch/giải thích ngữ cảnh câu hỏi này",
+                    "grammar_points": "Điểm ngữ pháp hoặc kỹ năng đọc hiểu liên quan",
+                    "wrong_options": "- đáp án: lý do sai (mỗi dòng 1 đáp án)",
+                    "key_vocab": "- từ: nghĩa (mỗi dòng 1 từ)"
+                  }
+                }
+              ]
+            }
+            Mức độ: ${DIFFICULTY_LEVEL <= 2 ? "Dễ - Trung bình" : "Khó"}`;
+                  }
+
+      // THAY BẰNG:
       try {
-        // Phần gọi API giữ nguyên như bạn (chỉ thay prompt)
-        const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
-        const listData = await listRes.json();
-        const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods?.includes("generateContent"));
-        const flashModel = textModels.find(m => m.name.includes("flash"));
-        const selectedModel = flashModel ? flashModel.name : textModels[0].name;
+        const currentKey = getActiveKey(); // Luôn lấy key hiện tại (không dùng biến cũ)
 
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${selectedModel}:generateContent?key=${GEMINI_API_KEY}`;
+        if (!window.globalCachedModel) {
+          const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${currentKey}`);
+          const listData = await listRes.json();
+          const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods?.includes("generateContent"));
+          const flashModel = textModels.find(m => m.name.includes("flash"));
+          window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
+        }
+
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${currentKey}`;
 
         let requestBody = { contents: [{ parts: [{ text: prompt }] }] };
-        if (selectedModel.includes("1.5")) {
+        if (window.globalCachedModel.includes("1.5")) {
           requestBody.generationConfig = { response_mime_type: "application/json" };
         }
 
@@ -2090,32 +2158,92 @@ Mức độ: ${DIFFICULTY_LEVEL <= 2 ? "Dễ - Trung bình" : "Khó"}`;
         });
 
         const data = await response.json();
-        if (data.error) throw new Error(data.error.message);
+
+        // Kiểm tra quota TRƯỚC, rotate key rồi thử lại thay vì crash
+        if (data.error) {
+          const msg = data.error.message?.toLowerCase() || "";
+          if (msg.includes("quota") || msg.includes("expired") || data.error.code === 429) {
+            window.globalCachedModel = null;
+            if (rotateKey()) {
+              console.log("⏳ Đổi key, thử lại sau 1.5s...");
+              await new Promise(r => setTimeout(r, 1500));
+              return fetchGrammarFromAI.current();
+            }
+          }
+          throw new Error(data.error.message);
+        }
 
         let rawText = data.candidates[0].content.parts[0].text;
         rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
 
-        const parsedQuestions = JSON.parse(rawText);
-        const finalPool = parsedQuestions.map(q => ({ ...q, options: shuffleArray(q.options) }));
+        const parsed = JSON.parse(rawText);
+
+        // Hàm strip prefix "A) " / "A." / "(A)" khỏi đầu chuỗi
+        const stripPrefix = (str) => (str || "").replace(/^\s*[A-Da-d][.)]\s*/i, "").trim();
+
+        // Hàm tìm option khớp với answer sau khi strip prefix
+        const normalizeAnswer = (options, answer) => {
+          const answerClean = stripPrefix(answer).toLowerCase();
+          const matched = options.find(opt => stripPrefix(opt).toLowerCase() === answerClean);
+          if (matched) return matched;
+          if (/^[a-d]$/i.test((answer || "").trim())) {
+            const letter = answer.trim().toUpperCase();
+            const byLetter = options.find(opt => opt.trim().toUpperCase().startsWith(letter));
+            if (byLetter) return byLetter;
+          }
+          return answer;
+        };
+
+        let finalPool = [];
+        if (isPassageMode) {
+          parsed.forEach(doc => {
+            doc.questions.forEach(q => {
+              const shuffledOptions = shuffleArray(q.options);
+              finalPool.push({
+                passage: doc.passage,
+                doc_type: doc.doc_type || "",
+                question: q.question,
+                options: shuffledOptions,
+                answer: normalizeAnswer(shuffledOptions, q.answer),
+                explanation: q.explanation,
+              });
+            });
+          });
+          finalPool = finalPool.slice(0, QUIZ_LIMIT);
+        } else {
+          finalPool = parsed.map(q => {
+            const shuffledOptions = shuffleArray(q.options);
+            return { ...q, options: shuffledOptions, answer: normalizeAnswer(shuffledOptions, q.answer) };
+          });
+        }
+
+        setQuestionsData(finalPool);
 
         setQuestionsData(finalPool);
       } catch (error) {
         console.error("Lỗi tạo đề:", error);
-        alert("Thầy AI đang bận hoặc gặp lỗi. Vui lòng thử lại!");
+        alert("Đã thử tất cả API Key nhưng đều hết quota. Vui lòng thử lại sau!");
         onBack();
       } finally {
         setLoadingData(false);
       }
     };
 
-    fetchGrammarFromAI();
+    fetchGrammarFromAI.current();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Chạy 1 lần khi mở GrammarQuiz
 
+    // Timer đếm lên (Free Mode)
   useEffect(() => {
-    if (selected !== null || loadingData || isGameOver || DIFFICULTY_LEVEL === 4) return;
+    if (!IS_FREE_MODE || loadingData || isGameOver) return;
+    const timer = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
+    return () => clearInterval(timer);
+  }, [IS_FREE_MODE, loadingData, isGameOver]);
+
+  useEffect(() => {
+    if (selected !== null || loadingData || isGameOver || DIFFICULTY_LEVEL === 4 || IS_FREE_MODE) return;
     if (questionsData[current]?.type === "crossword_boss") return;
-    if (timeLeft <= 0) { handleAnswer(null); return; }
+    if (timeLeft === null || timeLeft <= 0) { if (timeLeft !== null) handleAnswer(null); return; }
     const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     return () => clearInterval(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2224,7 +2352,7 @@ Mức độ: ${DIFFICULTY_LEVEL <= 2 ? "Dễ - Trung bình" : "Khó"}`;
     setAnswerStatus(null); 
     const nextIdx = current + 1;
     setCurrent(nextIdx);
-    setTimeLeft(TIME_PER_QUESTION); 
+    setTimeLeft(IS_FREE_MODE ? null : TIME_PER_QUESTION);
     if (nextIdx >= questionsData.length && DIFFICULTY_LEVEL < 3) playSound("finish");
   };
 
@@ -2455,11 +2583,25 @@ return (
                       <p style={{ margin: 0, fontSize: "13px", color: "#555", borderTop: "1px solid #ddd", paddingTop: "8px", fontStyle: "italic" }}>"{sidePanelResult.data.usage}"</p>
                   )}
               </div>
-              <button onClick={() => { onSaveWord("vocab", sidePanelResult.status === "found_ai" ? sidePanelResult.data : sidePanelResult.word); setSidePanelResult(r => ({...r, saved: true})); playSound("click"); }}
-                  disabled={sidePanelResult.saved}
-                  style={{ width: "100%", padding: "10px", backgroundColor: sidePanelResult.saved ? "#4CAF50" : "#FF9800", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: sidePanelResult.saved ? "default" : "pointer", fontSize: "14px" }}>
-                  {sidePanelResult.saved ? "✅ Đã lưu" : "🔖 Lưu vào Sổ tay"}
-              </button>
+              {sidePanelResult.saved ? (
+                  <div style={{ textAlign: "center", color: "#4CAF50", fontWeight: "bold", padding: "10px", backgroundColor: "#e8f5e9", borderRadius: "8px" }}>✅ Đã lưu!</div>
+              ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      <p style={{ margin: "0 0 4px 0", fontSize: "12px", color: "#999", textAlign: "center" }}>Lưu vào mục:</p>
+                      <button onClick={() => { onSaveWord("vocab", sidePanelResult.status === "found_ai" ? sidePanelResult.data : sidePanelResult.word); setSidePanelResult(r => ({...r, saved: true})); playSound("click"); }}
+                          style={{ width: "100%", padding: "9px", backgroundColor: "#4CAF50", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer", fontSize: "13px" }}>
+                          📖 Từ Vựng
+                      </button>
+                      <button onClick={() => { onSaveWord("collocation", sidePanelResult.status === "found_ai" ? sidePanelResult.data : sidePanelResult.word); setSidePanelResult(r => ({...r, saved: true})); playSound("click"); }}
+                          style={{ width: "100%", padding: "9px", backgroundColor: "#9C27B0", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer", fontSize: "13px" }}>
+                          🔗 Collocation
+                      </button>
+                      <button onClick={() => { onSaveWord("grammar", sidePanelResult.status === "found_ai" ? sidePanelResult.data : sidePanelResult.word); setSidePanelResult(r => ({...r, saved: true})); playSound("click"); }}
+                          style={{ width: "100%", padding: "9px", backgroundColor: "#2196F3", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer", fontSize: "13px" }}>
+                          📐 Ngữ Pháp
+                      </button>
+                  </div>
+              )}
           </>
       )}
   </div>
@@ -2572,8 +2714,11 @@ return (
         </div>
 
         <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#fff", padding: "6px 15px", borderRadius: "20px", boxShadow: "0 2px 5px rgba(0,0,0,0.05)", border: "1px solid #eee", flexShrink: 0 }}>
-          <span style={{ fontWeight: "bold", color: (DIFFICULTY_LEVEL===4 ? globalTime : timeLeft) <= 5 ? "#f44336" : "#2196F3", fontSize: "15px", textAlign: "center", whiteSpace: "nowrap" }}>
-            ⏱️ {DIFFICULTY_LEVEL === 4 ? globalTime : timeLeft}s
+          <span style={{ fontWeight: "bold", color: IS_FREE_MODE ? "#4CAF50" : (DIFFICULTY_LEVEL===4 ? globalTime : timeLeft) <= 5 ? "#f44336" : "#2196F3", fontSize: "15px", textAlign: "center", whiteSpace: "nowrap" }}>
+            {IS_FREE_MODE
+              ? `⏳ ${Math.floor(elapsedTime/60).toString().padStart(2,'0')}:${(elapsedTime%60).toString().padStart(2,'0')}`
+              : `⏱️ ${DIFFICULTY_LEVEL === 4 ? globalTime : timeLeft}s`
+            }
           </span>
         </div>
 
@@ -2603,17 +2748,22 @@ return (
         </div>
       </div>
 
-      {DIFFICULTY_LEVEL < 4 && <div style={{ width: "100%", height: "8px", backgroundColor: "#e0e0e0", borderRadius: "4px", overflow: "hidden", marginBottom: "20px" }}>
+      {DIFFICULTY_LEVEL < 4 && !IS_FREE_MODE && <div style={{ width: "100%", height: "8px", backgroundColor: "#e0e0e0", borderRadius: "4px", overflow: "hidden", marginBottom: "20px" }}>
         <div style={{ height: "100%", width: `${timePercentage}%`, backgroundColor: timeLeft <= 3 ? "#f44336" : "#2196F3", transition: "width 1s linear" }} />
       </div>}
 
-      {/* ĐÃ THÊM: userSelect="text" để ép trình duyệt cho phép bôi đen */}
-      {/* KHUNG HIỂN THỊ ĐOẠN VĂN (DÀNH CHO PART 6 & 7) */}
       {currentQ.passage && currentQ.passage.trim() !== "" && currentQ.passage.trim() !== currentQ.question?.trim() && (
-        <div style={{ backgroundColor: "#fdfdfd", border: "1px solid #d0d7de", padding: "15px", borderRadius: "8px", marginBottom: "20px", textAlign: "left", boxShadow: "inset 0 0 10px rgba(0,0,0,0.02)", cursor: "text", userSelect: "text", WebkitUserSelect: "text" }}>
-           <p style={{ fontSize: "15px", lineHeight: "1.6", color: "#333", margin: 0, whiteSpace: "pre-line", userSelect: "text", WebkitUserSelect: "text" }}>
-             {currentQ.passage}
-           </p>
+        <div style={{ backgroundColor: "#fdfdfd", border: "1px solid #d0d7de", borderRadius: "8px", marginBottom: "20px", overflow: "hidden" }}>
+          {currentQ.doc_type && (
+            <div style={{ backgroundColor: "#e3f2fd", padding: "6px 15px", borderBottom: "1px solid #d0d7de", fontSize: "12px", fontWeight: "bold", color: "#1565c0", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              📄 {currentQ.doc_type}
+            </div>
+          )}
+          <div style={{ padding: "15px", textAlign: "left", boxShadow: "inset 0 0 10px rgba(0,0,0,0.02)", cursor: "text", userSelect: "text", WebkitUserSelect: "text" }}>
+            <p style={{ fontSize: "15px", lineHeight: "1.8", color: "#333", margin: 0, whiteSpace: "pre-line", userSelect: "text", WebkitUserSelect: "text" }}>
+              {currentQ.passage}
+            </p>
+          </div>
         </div>
       )}
 
