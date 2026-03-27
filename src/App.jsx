@@ -1793,7 +1793,10 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
   const [selectedWord, setSelectedWord] = useState("");
   const [tooltipPos, setTooltipPos] = useState(null);
   const [dictModal, setDictModal] = useState(null);
+  // THAY BẰNG:
   const [isSaved, setIsSaved] = useState(false);
+  const [sidePanelResult, setSidePanelResult] = useState(null); // Kết quả hiện ở panel phải
+  const [sidePanelLoading, setSidePanelLoading] = useState(false);
 
   // 1. TẢI TỪ ĐIỂN GOOGLE SHEET NGAY KHI VÀO GAME ĐỂ DÙNG DẦN
   useEffect(() => {
@@ -1820,23 +1823,56 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
   }, []);
 
   // 2. HÀM QUÉT CHỮ BÔI ĐEN BẰNG CHUỘT/CẢM ỨNG (ĐÃ GIẢN LƯỢC CHO FIXED BAR)
+  // THAY BẰNG:
   const handleSelection = () => {
-      // Dùng setTimeout nhỏ để đợi OS xử lý xong Selection
-      setTimeout(() => { 
+      setTimeout(async () => { 
           const selection = window.getSelection();
-          // Nếu có bôi đen và không phải là click chuột rỗng
           if (selection && !selection.isCollapsed) {
               const text = selection.toString().trim();
-              // Giới hạn độ dài để tránh AI bị ngợp (dưới 40 từ)
               if (text && text.split(/\s+/).length <= 40 && text.length < 300) {
-                  // ĐÃ FIX: Không cần tính tọa độ rect nữa.
-                  // Chỉ cần set true để bật thanh công cụ cố định ở dưới.
-                  setTooltipPos(true); 
-                  setSelectedWord(text);
+                setSelectedWord(text);
+
+                    // Nếu màn hình rộng thì tra vào side panel, KHÔNG hiện bottom bar
+                    if (window.innerWidth >= 900) {
+                      const cleanWord = text.trim().toLowerCase().replace(/[^a-z-\s]/g, '');
+                      if (!cleanWord) return;
+                      setSidePanelLoading(true);
+                      setSidePanelResult(null);
+
+                      const foundInSheet = vocabDict.find(item => item.word && item.word.toLowerCase().trim() === cleanWord);
+                      if (foundInSheet) {
+                          setSidePanelResult({ word: cleanWord, status: 'found_sheet', data: foundInSheet });
+                          setSidePanelLoading(false);
+                          return;
+                      }
+
+                      try {
+                          const GEMINI_API_KEY = getActiveKey();
+                          if (!window.globalCachedModel) {
+                              const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
+                              const listData = await listRes.json();
+                              const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods?.includes("generateContent"));
+                              const flashModel = textModels.find(m => m.name.includes("flash"));
+                              window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
+                          }
+                          const prompt = `Phân tích từ/cụm từ tiếng Anh: "${cleanWord}". Trả về CHỈ 1 OBJECT JSON: {"word": "Từ chuẩn kèm loại từ", "phonetic": "Phiên âm", "meaning": "(Đồng nghĩa) - Nghĩa tiếng Việt ngắn gọn.", "usage": "1 ví dụ"}`;
+                          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${GEMINI_API_KEY}`, {
+                              method: "POST", headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                          });
+                          const data = await res.json();
+                          let rawText = data.candidates[0].content.parts[0].text;
+                          rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+                          setSidePanelResult({ word: cleanWord, status: 'found_ai', data: JSON.parse(rawText) });
+                      } catch(e) {
+                          setSidePanelResult({ word: cleanWord, status: 'error', data: null });
+                      } finally {
+                          setSidePanelLoading(false);
+                      }
+                  }
                   return;
               }
           }
-          // Nếu không bôi đen gì thì tắt thanh công cụ
           setSelectedWord("");
           setTooltipPos(null);
       }, 50);
@@ -1844,15 +1880,16 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
 
   // --- ĐÃ FIX: Lắng nghe sự kiện click/bôi đen trên TOÀN BỘ trang web (cả vùng xanh) ---
   useEffect(() => {
-      document.addEventListener("mouseup", handleSelection);
-      document.addEventListener("touchend", handleSelection);
-      
-      // Dọn dẹp sự kiện khi người dùng thoát khỏi màn hình Ngữ pháp
-      return () => {
-          document.removeEventListener("mouseup", handleSelection);
-          document.removeEventListener("touchend", handleSelection);
-      };
-  }, []);
+    document.addEventListener("mouseup", handleSelection);
+    document.addEventListener("touchend", handleSelection);
+    document.addEventListener("dblclick", handleSelection); // ← thêm dòng này
+    
+    return () => {
+        document.removeEventListener("mouseup", handleSelection);
+        document.removeEventListener("touchend", handleSelection);
+        document.removeEventListener("dblclick", handleSelection); // ← thêm dòng này
+    };
+}, []);
 
   // 3. HÀM XỬ LÝ TRA TỪ ĐIỂN (ĐÃ TỐI ƯU SIÊU TỐC + BẬT TÍNH NĂNG NHỚ TÊN AI)
   const handleLookup = async (wordToLookup) => {
@@ -2020,7 +2057,12 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
         "question": "...",
         "options": ["will achieve", "has achieved", "achieve", "achieves"],   // KHÔNG có A. B. C. D.
         "answer": "has achieved",                                            // Nội dung đầy đủ, KHÔNG có chữ cái
-        "explanation": "Giải thích chi tiết bằng tiếng Việt"
+        "explanation": {
+          "translation": "Dịch câu hoàn chỉnh (đã điền đáp án đúng) sang tiếng Việt",
+          "grammar_points": "Giải thích điểm ngữ pháp/cấu trúc đang dùng trong câu",
+          "wrong_options": "Tại sao các đáp án còn lại sai. Mỗi đáp án PHẢI trên 1 dòng riêng, bắt đầu bằng dấu gạch: - tên_đáp_án: lý do. KHÔNG được gộp nhiều đáp án vào 1 dòng.",
+          "key_vocab": "2-4 từ vựng quan trọng: từ - nghĩa tiếng Việt (mỗi từ 1 dòng, dùng dấu -)"
+        }
       }
 
 Mức độ: ${DIFFICULTY_LEVEL <= 2 ? "Dễ - Trung bình" : "Khó"}`;
@@ -2270,48 +2312,158 @@ Mức độ: ${DIFFICULTY_LEVEL <= 2 ? "Dễ - Trung bình" : "Khó"}`;
       else comboClass = "combo-1";
   }
 
-  const formatExplanation = (text) => {
-    if (!text) return null;
-    return text.split('\n').map((line, idx) => {
-      const trimmed = line.trim();
-      if (!trimmed) return <div key={idx} style={{ height: "10px" }}></div>; 
+  // THAY BẰNG:
+const renderInlineText = (text) => {
+  if (!text) return null;
+  return text.split(/('.*?'|".*?"|\*\*.*?\*\*|\*.*?\*)/g).map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) return <strong key={i} style={{ color: "#d32f2f" }}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith('*') && part.endsWith('*')) return <strong key={i} style={{ color: "#d32f2f" }}>{part.slice(1, -1)}</strong>;
+    if (part.startsWith("'") && part.endsWith("'") && part.length > 2) return <strong key={i} style={{ color: "#1976D2", backgroundColor: "#e3f2fd", padding: "2px 5px", borderRadius: "5px", border: "1px solid #bbdefb", wordBreak: "break-word" }}>{part.slice(1, -1)}</strong>;
+    if (part.startsWith('"') && part.endsWith('"') && part.length > 2) return <strong key={i} style={{ color: "#1976D2", backgroundColor: "#e3f2fd", padding: "2px 5px", borderRadius: "5px", border: "1px solid #bbdefb", wordBreak: "break-word" }}>{part.slice(1, -1)}</strong>;
+    return <span key={i}>{part}</span>;
+  });
+};
 
-      // Nhận diện gạch đầu dòng
-      const isListItem = /^[-\*•]\s/.test(trimmed); 
-      const cleanText = isListItem ? trimmed.substring(1).trim() : trimmed;
+const renderBulletList = (text, bulletColor = "#64b5f6") => {
+  if (!text) return null;
 
-      return (
-        <div key={idx} style={{ 
-          display: "flex", 
-          alignItems: "flex-start", 
-          gap: "10px", 
-          marginBottom: "12px",
-          padding: isListItem ? "12px 15px" : "0",
-          backgroundColor: isListItem ? "#ffffff" : "transparent",
-          borderLeft: isListItem ? "4px solid #64b5f6" : "none",
-          borderRadius: isListItem ? "0 8px 8px 0" : "0",
-          boxShadow: isListItem ? "0 2px 8px rgba(0,0,0,0.04)" : "none"
-        }}>
-          {isListItem && <span style={{ fontSize: "16px", marginTop: "2px", userSelect: "none" }}>💡</span>}
-          <span style={{ flex: 1, fontSize: "15px", lineHeight: "1.7", color: "#2c3e50" }}>
-            {/* Tự động đóng khung các từ vựng quan trọng (ĐÃ FIX TRÀN DÒNG) */}
-            {cleanText.split(/('.*?'|".*?"|\*\*.*?\*\*|\*.*?\*)/g).map((part, i) => {
-              if (part.startsWith('**') && part.endsWith('**')) return <strong key={i} style={{ color: "#d32f2f" }}>{part.slice(2, -2)}</strong>;
-              if (part.startsWith('*') && part.endsWith('*')) return <strong key={i} style={{ color: "#d32f2f" }}>{part.slice(1, -1)}</strong>;
-              if (part.startsWith("'") && part.endsWith("'") && part.length > 2) return <strong key={i} style={{ color: "#1976D2", backgroundColor: "#e3f2fd", padding: "2px 6px", borderRadius: "6px", border: "1px solid #bbdefb", wordBreak: "break-word" }}>{part.slice(1, -1)}</strong>;
-              if (part.startsWith('"') && part.endsWith('"') && part.length > 2) return <strong key={i} style={{ color: "#1976D2", backgroundColor: "#e3f2fd", padding: "2px 6px", borderRadius: "6px", border: "1px solid #bbdefb", wordBreak: "break-word" }}>{part.slice(1, -1)}</strong>;
-              return <span key={i}>{part}</span>;
-            })}
-          </span>
-        </div>
-      );
-    });
-  };
+  // Tách thông minh: hỗ trợ cả xuống dòng lẫn " - " nằm giữa câu
+  const rawLines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const lines = rawLines.flatMap(line => {
+    // Nếu dòng có dạng "- A ... - B ..." thì tách thành nhiều dòng
+    const parts = line.split(/\s+-\s+(?=[A-Z'"])/);
+    return parts.map((p, i) => (i === 0 ? p : `- ${p}`));
+  });
+
+  return lines.map((line, idx) => {
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+    const isItem = /^[-•*]\s/.test(trimmed);
+    const clean = isItem ? trimmed.substring(2).trim() : trimmed;
+    return (
+      <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: "8px", marginBottom: "8px" }}>
+        {isItem && <span style={{ color: bulletColor, fontWeight: "bold", marginTop: "2px", flexShrink: 0 }}>•</span>}
+        <span style={{ fontSize: "14px", lineHeight: "1.7", color: "#2c3e50" }}>{renderInlineText(clean)}</span>
+      </div>
+    );
+  });
+};
+
+const formatExplanation = (explanation) => {
+  if (!explanation) return null;
+
+  if (typeof explanation === 'object' && explanation !== null) {
+    const sections = [
+      { key: 'translation',    icon: '🇻🇳', label: 'Dịch câu',             bgColor: '#e8f5e9', borderColor: '#66bb6a', labelColor: '#2e7d32', isPlain: true  },
+      { key: 'grammar_points', icon: '📐', label: 'Điểm ngữ pháp',         bgColor: '#e3f2fd', borderColor: '#42a5f5', labelColor: '#1565c0', isPlain: false },
+      { key: 'wrong_options',  icon: '❌', label: 'Các đáp án sai',         bgColor: '#fff3e0', borderColor: '#ffa726', labelColor: '#e65100', isPlain: false },
+      { key: 'key_vocab',      icon: '📚', label: 'Từ vựng quan trọng',     bgColor: '#fce4ec', borderColor: '#ec407a', labelColor: '#880e4f', isPlain: false },
+    ];
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        {sections.map(({ key, icon, label, bgColor, borderColor, labelColor, isPlain }) => {
+          const content = explanation[key];
+          if (!content) return null;
+          return (
+            <div key={key} style={{ backgroundColor: bgColor, border: `1px solid ${borderColor}`, borderRadius: "10px", padding: "12px 15px" }}>
+              <div style={{ fontWeight: "bold", color: labelColor, fontSize: "13px", marginBottom: "8px", display: "flex", alignItems: "center", gap: "5px" }}>
+                <span>{icon}</span> {label}
+              </div>
+              {isPlain
+                ? <p style={{ margin: 0, fontSize: "15px", lineHeight: "1.7", color: "#2c3e50" }}>{renderInlineText(content)}</p>
+                : renderBulletList(content, borderColor)
+              }
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Fallback: explanation là string cũ
+  return explanation.split('\n').map((line, idx) => {
+    const trimmed = line.trim();
+    if (!trimmed) return <div key={idx} style={{ height: "10px" }}></div>;
+    const isListItem = /^[-\*•]\s/.test(trimmed);
+    const cleanText = isListItem ? trimmed.substring(1).trim() : trimmed;
+    return (
+      <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: "10px", marginBottom: "12px", padding: isListItem ? "12px 15px" : "0", backgroundColor: isListItem ? "#ffffff" : "transparent", borderLeft: isListItem ? "4px solid #64b5f6" : "none", borderRadius: isListItem ? "0 8px 8px 0" : "0", boxShadow: isListItem ? "0 2px 8px rgba(0,0,0,0.04)" : "none" }}>
+        {isListItem && <span style={{ fontSize: "16px", marginTop: "2px", userSelect: "none" }}>💡</span>}
+        <span style={{ flex: 1, fontSize: "15px", lineHeight: "1.7", color: "#2c3e50" }}>{renderInlineText(cleanText)}</span>
+      </div>
+    );
+  });
+};
 
   
 
-  return (
-    <div className="container" style={{ maxWidth: TOEIC_PART !== "part5" ? "600px" : "450px", position: "relative" }}>
+  // THAY BẰNG:
+return (
+  <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-start", minHeight: "100vh", position: "relative" }}>
+
+  {/* PANEL DỊCH TỪ BÊN PHẢI (CHỈ HIỆN TRÊN MÀN HÌNH RỘNG >= 900px) */}
+  <div style={{
+      display: window.innerWidth >= 900 ? "flex" : "none",
+      flexDirection: "column",
+      position: "fixed",
+      top: "20px",
+      right: "20px",
+      width: "260px",
+      maxHeight: "calc(100vh - 40px)",
+      overflowY: "auto",
+      backgroundColor: "white",
+      borderRadius: "16px",
+      boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
+      border: "1px solid #e0e0e0",
+      padding: "20px",
+      zIndex: 100,
+  }}>
+      <div style={{ fontWeight: "bold", color: "#1565c0", fontSize: "15px", marginBottom: "15px", display: "flex", alignItems: "center", gap: "6px", borderBottom: "2px solid #e3f2fd", paddingBottom: "10px" }}>
+          🔍 Tra từ nhanh
+          <span style={{ fontSize: "11px", color: "#999", fontWeight: "normal", marginLeft: "auto" }}>Bôi đen từ để tra</span>
+      </div>
+
+      {!sidePanelLoading && !sidePanelResult && (
+          <div style={{ textAlign: "center", color: "#bbb", fontSize: "14px", padding: "30px 0" }}>
+              <div style={{ fontSize: "36px", marginBottom: "10px" }}>✍️</div>
+              Bôi đen bất kỳ từ nào trong câu hỏi để tra nghĩa ngay tại đây
+          </div>
+      )}
+
+      {sidePanelLoading && (
+          <div style={{ textAlign: "center", color: "#2196F3", fontSize: "14px", padding: "30px 0" }}>
+              <div style={{ fontSize: "30px", marginBottom: "10px" }}>⏳</div>
+              Đang tra từ...
+          </div>
+      )}
+
+      {sidePanelResult && !sidePanelLoading && (
+          <>
+              <div style={{ fontSize: "22px", fontWeight: "bold", color: "#2196F3", marginBottom: "4px" }}>
+                  {sidePanelResult.data?.word || sidePanelResult.word}
+              </div>
+              <div style={{ marginBottom: "12px" }}>
+                  <span style={{ fontSize: "11px", backgroundColor: sidePanelResult.status === "found_sheet" ? "#4CAF50" : "#9C27B0", color: "white", padding: "2px 8px", borderRadius: "10px", fontWeight: "bold" }}>
+                      {sidePanelResult.status === "found_sheet" ? "✅ Sổ tay" : "🤖 AI"}
+                  </span>
+              </div>
+              <div style={{ backgroundColor: "#f0f8ff", padding: "12px", borderRadius: "10px", border: "1px dashed #90caf9", marginBottom: "12px" }}>
+                  <p style={{ margin: "0 0 6px 0", fontSize: "13px", fontStyle: "italic", color: "#888" }}>{sidePanelResult.data?.phonetic}</p>
+                  <p style={{ margin: "0 0 8px 0", fontSize: "16px", fontWeight: "bold", color: "#2e7d32" }}>{sidePanelResult.data?.meaning}</p>
+                  {sidePanelResult.data?.usage && (
+                      <p style={{ margin: 0, fontSize: "13px", color: "#555", borderTop: "1px solid #ddd", paddingTop: "8px", fontStyle: "italic" }}>"{sidePanelResult.data.usage}"</p>
+                  )}
+              </div>
+              <button onClick={() => { onSaveWord("vocab", sidePanelResult.status === "found_ai" ? sidePanelResult.data : sidePanelResult.word); setSidePanelResult(r => ({...r, saved: true})); playSound("click"); }}
+                  disabled={sidePanelResult.saved}
+                  style={{ width: "100%", padding: "10px", backgroundColor: sidePanelResult.saved ? "#4CAF50" : "#FF9800", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: sidePanelResult.saved ? "default" : "pointer", fontSize: "14px" }}>
+                  {sidePanelResult.saved ? "✅ Đã lưu" : "🔖 Lưu vào Sổ tay"}
+              </button>
+          </>
+      )}
+  </div>
+
+  <div className="container" style={{ maxWidth: TOEIC_PART !== "part5" ? "600px" : "450px", position: "relative", flex: "1 1 auto" }}>
 
       {/* --- THANH CÔNG CỤ XỬ LÝ CHỮ CỐ ĐỊNH Ở ĐÁY MÀN HÌNH (FIXED BOTTOM BAR) --- */}
       {selectedWord && tooltipPos && !dictModal && (
@@ -2456,7 +2608,7 @@ Mức độ: ${DIFFICULTY_LEVEL <= 2 ? "Dễ - Trung bình" : "Khó"}`;
 
       {/* ĐÃ THÊM: userSelect="text" để ép trình duyệt cho phép bôi đen */}
       {/* KHUNG HIỂN THỊ ĐOẠN VĂN (DÀNH CHO PART 6 & 7) */}
-      {currentQ.passage && currentQ.passage.trim() !== "" && (
+      {currentQ.passage && currentQ.passage.trim() !== "" && currentQ.passage.trim() !== currentQ.question?.trim() && (
         <div style={{ backgroundColor: "#fdfdfd", border: "1px solid #d0d7de", padding: "15px", borderRadius: "8px", marginBottom: "20px", textAlign: "left", boxShadow: "inset 0 0 10px rgba(0,0,0,0.02)", cursor: "text", userSelect: "text", WebkitUserSelect: "text" }}>
            <p style={{ fontSize: "15px", lineHeight: "1.6", color: "#333", margin: 0, whiteSpace: "pre-line", userSelect: "text", WebkitUserSelect: "text" }}>
              {currentQ.passage}
@@ -2527,9 +2679,9 @@ Mức độ: ${DIFFICULTY_LEVEL <= 2 ? "Dễ - Trung bình" : "Khó"}`;
         </>
       )}
     </div>
+  </div> 
   );
 }
-
 // --- ĐƯA BỘ MÁY NHẠC RA NGOÀI ---
 const BGM_PLAYLIST = [
   "/music/1.mp3",       
