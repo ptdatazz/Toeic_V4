@@ -1560,9 +1560,15 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
                                 transform: "rotateY(180deg)", boxShadow: "0 8px 15px rgba(0,0,0,0.2)", border: "4px solid #c8e6c9",
                                 padding: "20px", boxSizing: "border-box", overflowY: "auto"
                             }}>
-                                <span style={{ fontSize: "20px", fontWeight: "bold", textAlign: "center", width: "100%", lineHeight: "1.4" }}>
-                                    {currentQ.meaning}
-                                </span>
+                                {currentQ.meaning ? (
+                                    <span style={{ fontSize: "20px", fontWeight: "bold", textAlign: "center", width: "100%", lineHeight: "1.4" }}>{currentQ.meaning}</span>
+                                ) : (
+                                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", width: "100%" }}>
+                                        {currentQ.noun_meaning && <span style={{ fontSize: "18px", fontWeight: "bold", textAlign: "center", lineHeight: "1.4" }}><span style={{ opacity: 0.8, fontSize: "14px" }}>(n)</span> {currentQ.noun_meaning}</span>}
+                                        {currentQ.verb_meaning && <span style={{ fontSize: "18px", fontWeight: "bold", textAlign: "center", lineHeight: "1.4" }}><span style={{ opacity: 0.8, fontSize: "14px" }}>(v)</span> {currentQ.verb_meaning}</span>}
+                                        {currentQ.adj_meaning && <span style={{ fontSize: "18px", fontWeight: "bold", textAlign: "center", lineHeight: "1.4" }}><span style={{ opacity: 0.8, fontSize: "14px" }}>(adj)</span> {currentQ.adj_meaning}</span>}
+                                    </div>
+                                )}
                                 {currentQ.usage && (
                                     <span style={{ fontSize: "14px", fontStyle: "italic", opacity: 0.9, marginTop: "12px", textAlign: "center", borderTop: "1px solid rgba(255,255,255,0.3)", paddingTop: "10px", width: "100%", lineHeight: "1.3" }}>
                                         "{currentQ.usage}"
@@ -1582,7 +1588,13 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
             ) : (
                 <>
                     <h2 style={{ fontSize: "20px", color: "#2c3e50", marginBottom: "10px" }}>Gõ lại từ tiếng Anh có nghĩa là:</h2>
-                    <h3 style={{ fontSize: "24px", color: "#4CAF50", marginBottom: "20px" }}>"{currentQ.meaning}"</h3>
+                    <h3 style={{ fontSize: "24px", color: "#4CAF50", marginBottom: "20px" }}>
+                        "{currentQ.meaning || [
+                            currentQ.noun_meaning && `(n) ${currentQ.noun_meaning}`,
+                            currentQ.verb_meaning && `(v) ${currentQ.verb_meaning}`,
+                            currentQ.adj_meaning && `(adj) ${currentQ.adj_meaning}`,
+                        ].filter(Boolean).join(' / ')}"
+                    </h3>
                     <form
                         onSubmit={(e) => {
                             e.preventDefault();
