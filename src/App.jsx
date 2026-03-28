@@ -1766,7 +1766,8 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
 // =======================================================================
 // COMPONENT MỚI: NGỮ PHÁP TÍCH HỢP AI CHUẨN ETS + TRA TỪ ĐIỂN BÔI ĐEN
 // =======================================================================
-function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuestions }) {
+function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuestions, globalStats }) {
+
   const DIFFICULTY_LEVEL = settings.difficultyLevel;
   const QUIZ_LIMIT = settings.quizLimit; 
   const TIME_PER_QUESTION = settings.timePerQuestion;
@@ -1805,6 +1806,20 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
   const sidePanelLockRef = useRef(false);
   const sidePanelDebounceRef = useRef(null); // Chống gọi liên tục khi bôi đen
 
+  useEffect(() => {
+    const lockLandscape = async () => {
+        try {
+            if (screen.orientation?.lock) {
+                await screen.orientation.lock('landscape');
+            }
+        } catch(e) {}
+    };
+    if (window.innerWidth < 900) lockLandscape();
+    return () => {
+        try { screen.orientation?.unlock?.(); } catch(e) {}
+    };
+}, []);
+
   // 1. TẢI TỪ ĐIỂN GOOGLE SHEET NGAY KHI VÀO GAME ĐỂ DÙNG DẦN
   useEffect(() => {
     const fetchVocabForDict = async () => {
@@ -1831,30 +1846,51 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
 
   // 2. HÀM QUÉT CHỮ BÔI ĐEN BẰNG CHUỘT/CẢM ỨNG (ĐÃ GIẢN LƯỢC CHO FIXED BAR)
   // THAY BẰNG:
-  const handleSelection = () => {
+  const handleSelection = (e) => {
       setTimeout(async () => { 
+          // Bỏ qua nếu click vào side panel
+          const sidePanel = document.getElementById('side-panel-dict');
+          if (sidePanel && e.target && sidePanel.contains(e.target)) return;
+
           const selection = window.getSelection();
           if (selection && !selection.isCollapsed) {
               const text = selection.toString().trim();
-              if (text && text.split(/\s+/).length <= 40 && text.length < 300) {
-                setTooltipPos(true); 
-                setSelectedWord(text);
+              if (text && text.length >= 2 && text.split(/\s+/).length <= 40 && text.length < 300) {
+                  const anchorNode = selection.anchorNode;
+                  const container = document.getElementById('grammar-quiz-content');
+                  if (container && !container.contains(anchorNode)) return;
+                  setSelectedWord(text);
 
                     // Nếu màn hình rộng thì tra vào side panel, KHÔNG hiện bottom bar
-                    if (window.innerWidth >= 900) {
+                    if (window.innerWidth >= 900 || window.innerWidth > window.innerHeight) {
                       const cleanWord = text.trim().toLowerCase().replace(/[^a-z-\s]/g, '');
                       if (!cleanWord) return;
                       setSidePanelLoading(true);
                       setSidePanelResult(null);
 
-                      const foundInSheet = vocabDict.find(item => {
+                      // Gộp cả Google Sheet + Sổ tay cá nhân (Firestore) để tìm
+                      const personalWords = [
+                          ...(globalStats?.vocab?.addedWordsObj || []),
+                          ...(globalStats?.collocation?.addedWordsObj || []),
+                          ...(globalStats?.grammar?.addedWordsObj || []),
+                      ];
+                      const allSources = [...vocabDict, ...personalWords];
+
+                      const foundInSheet = allSources.find(item => {
                           if (!item.word) return false;
                           const dictWord = item.word.toLowerCase().trim().replace(/\s*\(.*?\)\s*/g, '').trim();
                           const searched = cleanWord.toLowerCase().trim();
                           return dictWord === searched || dictWord.startsWith(searched) || searched.startsWith(dictWord);
                       });
+                      // Nếu tìm thấy trong sheet → hiện ngay, KHÔNG gọi AI
+                      if (foundInSheet) {
+                          setSidePanelResult({ word: cleanWord, status: 'found_sheet', data: foundInSheet });
+                          setSidePanelLoading(false);
+                          sidePanelLockRef.current = false;
+                          return;
+                      }
 
-                      // Debounce 600ms: chỉ gọi AI sau khi người dùng dừng bôi đen
+                      // Không có trong sheet → mới debounce gọi AI
                       clearTimeout(sidePanelDebounceRef.current);
                       sidePanelDebounceRef.current = setTimeout(async () => {
                       if (sidePanelLockRef.current) return;
@@ -1870,7 +1906,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
                                   const flashModel = textModels.find(m => m.name.includes("flash"));
                                   window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
                               }
-                              const prompt = `Phân tích từ/cụm từ tiếng Anh: "${cleanWord}". Trả về CHỈ 1 OBJECT JSON: {"word": "Từ chuẩn kèm loại từ", "phonetic": "Phiên âm", "meaning": "Nghĩa tiếng Việt ngắn gọn", "synonyms": "từ đồng nghĩa 1, từ đồng nghĩa 2", "usage": "1 ví dụ"}`;
+                              const prompt = `Phân tích từ/cụm từ tiếng Anh: "${cleanWord}". Trả về CHỈ 1 OBJECT JSON: {"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia được", "synonym": "tối đa 3 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}`;
                               const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${getActiveKey()}`, {
                                   method: "POST", headers: { "Content-Type": "application/json" },
                                   body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
@@ -1896,12 +1932,12 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
                           setSidePanelResult({ word: cleanWord, status: 'error', data: null });
                       } finally {
                           setSidePanelLoading(false);
-                          sidePanelLockRef.current = false; // Mở khóa
+                          sidePanelLockRef.current = false;
                       }
-                      }, 600);
+                      }, 800);
                   }
                   return;
-              }
+                } 
           }
           setSelectedWord("");
           setTooltipPos(null);
@@ -2182,6 +2218,8 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
             if (rotateKey()) {
               console.log("⏳ Đổi key, thử lại sau 1.5s...");
               await new Promise(r => setTimeout(r, 1500));
+              isFetchingRef.current = false;
+              setLoadingData(true); // ← Giữ loading=true trước khi finally tắt nó
               return fetchGrammarFromAI.current();
             }
           }
@@ -2234,7 +2272,6 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
 
         setQuestionsData(finalPool);
 
-        setQuestionsData(finalPool);
       } catch (error) {
         console.error("Lỗi tạo đề:", error);
         alert("Đã thử tất cả API Key nhưng đều hết quota. Vui lòng thử lại sau!");
@@ -2546,12 +2583,12 @@ return (
   <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-start", minHeight: "100vh", position: "relative" }}>
 
   {/* PANEL DỊCH TỪ BÊN PHẢI (CHỈ HIỆN TRÊN MÀN HÌNH RỘNG >= 900px) */}
-  <div style={{
-      display: window.innerWidth >= 900 ? "flex" : "none",
+  <div id="side-panel-dict" style={{
+      display: (window.innerWidth >= 900 || window.innerWidth > window.innerHeight) ? "flex" : "none",
       flexDirection: "column",
       position: "fixed",
       top: "20px",
-      right: "calc(60% - 680px)",
+      right: "calc(70% - 680px)",
       width: "260px",
       maxHeight: "calc(100vh - 40px)",
       overflowY: "auto",
@@ -2593,7 +2630,16 @@ return (
               </div>
               <div style={{ backgroundColor: "#f0f8ff", padding: "12px", borderRadius: "10px", border: "1px dashed #90caf9", marginBottom: "12px" }}>
                   <p style={{ margin: "0 0 6px 0", fontSize: "13px", fontStyle: "italic", color: "#888" }}>{sidePanelResult.data?.phonetic}</p>
-                  <p style={{ margin: "0 0 8px 0", fontSize: "16px", fontWeight: "bold", color: "#2e7d32" }}>{sidePanelResult.data?.meaning}</p>
+                    {(sidePanelResult.data?.noun_meaning || sidePanelResult.data?.verb_meaning || sidePanelResult.data?.adj_meaning) ? (
+                      <div style={{ marginBottom: "8px" }}>
+                          {sidePanelResult.data.noun_meaning && <p style={{ margin: "0 0 5px 0", fontSize: "16px", color: "#2e7d32" }}>• <strong>(n)</strong> {sidePanelResult.data.noun_meaning}</p>}
+                          {sidePanelResult.data.verb_meaning && <p style={{ margin: "0 0 5px 0", fontSize: "16px", color: "#1565c0" }}>• <strong>(v)</strong> {sidePanelResult.data.verb_meaning}</p>}
+                          {sidePanelResult.data.adj_meaning && <p style={{ margin: "0 0 5px 0", fontSize: "16px", color: "#6a1b9a" }}>• <strong>(adj/adv)</strong> {sidePanelResult.data.adj_meaning}</p>}
+                          {sidePanelResult.data.synonym && <p style={{ margin: "6px 0 0 0", fontSize: "13px", color: "#e65100" }}>🔀 <strong>Đồng nghĩa:</strong> {sidePanelResult.data.synonym}</p>}
+                      </div>
+                  ) : (
+                      <p style={{ margin: "0 0 8px 0", fontSize: "16px", fontWeight: "bold", color: "#2e7d32" }}>{sidePanelResult.data?.meaning}</p>
+                  )}
                   {sidePanelResult.data?.usage && (
                       <p style={{ margin: 0, fontSize: "13px", color: "#555", borderTop: "1px solid #ddd", paddingTop: "8px", fontStyle: "italic" }}>"{sidePanelResult.data.usage}"</p>
                   )}
@@ -2603,15 +2649,15 @@ return (
               ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                       <p style={{ margin: "0 0 4px 0", fontSize: "12px", color: "#999", textAlign: "center" }}>Lưu vào mục:</p>
-                      <button onClick={() => { onSaveWord("vocab", sidePanelResult.status === "found_ai" ? sidePanelResult.data : sidePanelResult.word); setSidePanelResult(r => ({...r, saved: true})); playSound("click"); }}
+                      <button onClick={() => { const d = sidePanelResult.status === "found_ai" ? {...sidePanelResult.data, word: sidePanelResult.word} : sidePanelResult.word; onSaveWord("vocab", d); setSidePanelResult(r => ({...r, saved: true})); playSound("click"); }}
                           style={{ width: "100%", padding: "9px", backgroundColor: "#4CAF50", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer", fontSize: "13px" }}>
                           📖 Từ Vựng
                       </button>
-                      <button onClick={() => { onSaveWord("collocation", sidePanelResult.status === "found_ai" ? sidePanelResult.data : sidePanelResult.word); setSidePanelResult(r => ({...r, saved: true})); playSound("click"); }}
+                      <button onClick={() => { const d = sidePanelResult.status === "found_ai" ? {...sidePanelResult.data, word: sidePanelResult.word} : sidePanelResult.word; onSaveWord("collocation", d); setSidePanelResult(r => ({...r, saved: true})); playSound("click"); }}
                           style={{ width: "100%", padding: "9px", backgroundColor: "#9C27B0", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer", fontSize: "13px" }}>
                           🔗 Collocation
                       </button>
-                      <button onClick={() => { onSaveWord("grammar", sidePanelResult.status === "found_ai" ? sidePanelResult.data : sidePanelResult.word); setSidePanelResult(r => ({...r, saved: true})); playSound("click"); }}
+                      <button onClick={() => { const d = sidePanelResult.status === "found_ai" ? {...sidePanelResult.data, word: sidePanelResult.word} : sidePanelResult.word; onSaveWord("grammar", d); setSidePanelResult(r => ({...r, saved: true})); playSound("click"); }}
                           style={{ width: "100%", padding: "9px", backgroundColor: "#2196F3", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer", fontSize: "13px" }}>
                           📐 Ngữ Pháp
                       </button>
@@ -2621,7 +2667,7 @@ return (
       )}
   </div>
 
-  <div className="container" style={{ maxWidth: TOEIC_PART !== "part5" ? "600px" : "450px", position: "relative", flex: "1 1 auto" }}>
+  <div id="grammar-quiz-content" className="container" style={{ maxWidth: TOEIC_PART !== "part5" ? "600px" : "450px", position: "relative", marginRight: window.innerWidth >= 900 ? "300px" : "0" }}>
 
       {/* --- THANH CÔNG CỤ XỬ LÝ CHỮ CỐ ĐỊNH Ở ĐÁY MÀN HÌNH (FIXED BOTTOM BAR) --- */}
       {selectedWord && tooltipPos && !dictModal && (
@@ -2789,7 +2835,7 @@ return (
 
       <div className="options">
         {currentQ.options.map((option, idx) => (
-          <button key={idx} onClick={() => handleAnswer(option)} className={selected ? (option === currentQ.answer ? "correct" : option === selected ? "wrong" : "") : ""} disabled={selected !== null}>
+          <button key={idx} onClick={() => { window.getSelection()?.removeAllRanges(); handleAnswer(option); }} className={selected ? (option === currentQ.answer ? "correct" : option === selected ? "wrong" : "") : ""} disabled={selected !== null}>
             {option}
           </button>
         ))}
@@ -2922,7 +2968,9 @@ function ModeSelectionScreen({ onModeSelect, onNotebookClick }) {
 function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveWord }) {
   const [activeTab, setActiveTab] = useState("vocab");
   const [newWord, setNewWord] = useState("");
-  const [isAdding, setIsAdding] = useState(false); 
+  const [isAdding, setIsAdding] = useState(false);
+  const [isReloading, setIsReloading] = useState(false);
+  const [reloadProgress, setReloadProgress] = useState({ done: 0, total: 0 }); 
 
   const [viewAllModal, setViewAllModal] = useState(null); 
   const [wordDetailModal, setWordDetailModal] = useState(null); 
@@ -2944,8 +2992,8 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
       }
 
       let prompt = currentTab === "grammar" 
-        ? `Giải thích cấu trúc ngữ pháp: "${wordInput}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON (Không giải thích thêm):\n{"word": "${wordInput}", "phonetic": "Công thức", "meaning": "Cách sử dụng cốt lõi", "usage": "1 ví dụ"}`
-        : `Phân tích cụm từ tiếng Anh: "${wordInput}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON (Không giải thích thêm):\n{"word": "Từ vựng (BẮT BUỘC kèm từ loại, VD: apple (n), run (v))", "phonetic": "Phiên âm", "meaning": "(Đồng nghĩa) - Nghĩa.", "usage": "1 ví dụ"}`;
+        ? `Giải thích cấu trúc ngữ pháp: "${wordInput}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON:\n{"word": "${wordInput}", "phonetic": "Công thức/cấu trúc", "meaning": "Cách dùng cốt lõi", "usage": "1 ví dụ"}`
+        : `Phân tích từ/cụm từ tiếng Anh: "${wordInput}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON, KHÔNG giải thích thêm:\n{"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia loại từ được", "synonym": "tối đa 3 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}`;
 
       const requestBody = { contents: [{ parts: [{ text: prompt }] }] };
       if (window.globalCachedModel.includes("1.5")) {
@@ -2987,8 +3035,8 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
       }
 
       let prompt = currentTab === "grammar"
-        ? `Giải thích các cấu trúc ngữ pháp sau: "${wordsString}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "cấu trúc 1", "phonetic": "Công thức", "meaning": "Nghĩa", "usage": "Ví dụ"}]`
-        : `Phân tích các từ sau: "${wordsString}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "Từ vựng (BẮT BUỘC kèm từ loại, VD: apple (n), run (v))", "phonetic": "Phiên âm", "meaning": "Nghĩa", "usage": "Ví dụ"}]`;
+        ? `Giải thích các cấu trúc ngữ pháp sau: "${wordsString}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "cấu trúc", "phonetic": "Công thức", "meaning": "Nghĩa", "usage": "Ví dụ"}]`
+        : `Phân tích các từ/cụm từ tiếng Anh sau: "${wordsString}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ", "synonym": "tối đa 3 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}]`;
 
       const requestBody = { contents: [{ parts: [{ text: prompt }] }] };
       if (window.globalCachedModel.includes("1.5")) {
@@ -3179,7 +3227,43 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
 
   return (
     <div className="container" style={{ textAlign: "center", paddingTop: "20px", maxWidth: "450px" }}>
-      <h2 style={{ color: "#2c3e50", marginBottom: "5px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>📖 Sổ Tay Của Tôi</h2>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "5px" }}>
+        <h2 style={{ color: "#2c3e50", margin: 0 }}>📖 Sổ Tay Của Tôi</h2>
+        <button
+          disabled={isReloading || isAdding}
+          onClick={async () => {
+            const dict = globalStats[activeTab]?.addedWordsObj || [];
+            if (dict.length === 0) return alert("Chưa có từ nào trong sổ tay!");
+            if (!window.confirm(`Reload nghĩa cho ${dict.length} từ trong tab "${activeTab}"? Có thể mất vài phút.`)) return;
+            setIsReloading(true);
+            setReloadProgress({ done: 0, total: dict.length });
+            let updatedList = [];
+            for (let i = 0; i < dict.length; i++) {
+              const item = dict[i];
+              const wordStr = typeof item === "string" ? item : item.word;
+              try {
+                const aiResult = await fetchAI(wordStr, activeTab);
+                aiResult.word = wordStr;
+                updatedList.push(aiResult);
+              } catch(e) {
+                updatedList.push(item); // Giữ nguyên nếu lỗi
+              }
+              setReloadProgress({ done: i + 1, total: dict.length });
+              await new Promise(r => setTimeout(r, 300)); // Tránh spam API
+            }
+            await onSaveWord(activeTab, updatedList);
+            setIsReloading(false);
+            alert("✅ Đã cập nhật xong toàn bộ nghĩa!");
+          }}
+          style={{
+            padding: "8px 14px", borderRadius: "20px", border: "none", cursor: isReloading ? "not-allowed" : "pointer",
+            backgroundColor: isReloading ? "#e0e0e0" : "#e3f2fd", color: isReloading ? "#999" : "#1565c0",
+            fontWeight: "bold", fontSize: "13px", display: "flex", alignItems: "center", gap: "6px",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.08)"
+          }}>
+          {isReloading ? `🔄 ${reloadProgress.done}/${reloadProgress.total}` : "🔄 Reload nghĩa"}
+        </button>
+      </div>
       <p style={{ color: "#7f8c8d", marginBottom: "20px", fontSize: "14px" }}>Nơi lưu trữ bí kíp và khắc phục điểm yếu</p>
 
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px", backgroundColor: "#f0f0f0", padding: "5px", borderRadius: "10px" }}>
@@ -3289,9 +3373,19 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                                         {activeTab === "grammar" ? `📐 ${wordDetailModal.detail.phonetic}` : wordDetailModal.detail.phonetic}
                                     </p>
                                 )}
-                                <p style={{ margin: "0 0 10px 0", fontSize: "18px", fontWeight: "bold", color: "#4CAF50" }}>{wordDetailModal.detail.meaning}</p>
-                                {wordDetailModal.detail.usage && <p style={{ margin: "0 0 8px 0", fontSize: "14px", color: "#333", borderTop: "1px solid rgba(0,0,0,0.1)", paddingTop: "10px" }}>"{wordDetailModal.detail.usage}"</p>}
-                                {wordDetailModal.detail.synonym && <p style={{ margin: "6px 0 0 0", fontSize: "13px", color: "#7b1fa2" }}>🔀 <strong>Đồng nghĩa:</strong> {wordDetailModal.detail.synonym}</p>}
+                                {/* Hiển thị nghĩa theo từng loại từ */}
+                                {(wordDetailModal.detail.noun_meaning || wordDetailModal.detail.verb_meaning || wordDetailModal.detail.adj_meaning) ? (
+                                    <div style={{ marginBottom: "10px" }}>
+                                        <p style={{ margin: "0 0 6px 0", fontSize: "13px", fontWeight: "bold", color: "#555" }}>📖 Nghĩa:</p>
+                                        {wordDetailModal.detail.noun_meaning && <p style={{ margin: "0 0 6px 0", fontSize: "18px", color: "#2e7d32" }}>• <strong>(n)</strong> {wordDetailModal.detail.noun_meaning}</p>}
+                                        {wordDetailModal.detail.verb_meaning && <p style={{ margin: "0 0 6px 0", fontSize: "18px", color: "#1565c0" }}>• <strong>(v)</strong> {wordDetailModal.detail.verb_meaning}</p>}
+                                        {wordDetailModal.detail.adj_meaning && <p style={{ margin: "0 0 6px 0", fontSize: "18px", color: "#6a1b9a" }}>• <strong>(adj/adv)</strong> {wordDetailModal.detail.adj_meaning}</p>}
+                                        {wordDetailModal.detail.synonym && <p style={{ margin: "8px 0 0 0", fontSize: "15px", color: "#e65100" }}>🔀 <strong>Đồng nghĩa:</strong> {wordDetailModal.detail.synonym}</p>}
+                                                                            </div>
+                                ) : (
+                                    <p style={{ margin: "0 0 10px 0", fontSize: "18px", fontWeight: "bold", color: "#4CAF50" }}>{wordDetailModal.detail.meaning}</p>
+                                )}
+                                {wordDetailModal.detail.usage && <p style={{ margin: "0 0 0 0", fontSize: "14px", color: "#333", borderTop: "1px solid rgba(0,0,0,0.1)", paddingTop: "10px" }}>"{wordDetailModal.detail.usage}"</p>}
                                 {wordDetailModal.detail.structure && <p style={{ margin: "6px 0 0 0", fontSize: "13px", color: "#0277bd" }}>🔗 <strong>Cấu trúc liên quan:</strong> {wordDetailModal.detail.structure}</p>}
                             </div>
                         ) : (
@@ -4002,7 +4096,7 @@ function App() {
   // ĐÃ FIX BƯỚC 1: Truyền thêm onMoveWord={handleMoveWord} vào 2 dòng này
   if (screen === "vocab") return <WordQuiz mode="vocab" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} stats={globalStats.vocab} isMusicPlaying={isMusicPlaying} kpi={{target: dailyTarget, current: todayMasteredCount}} />;
   if (screen === "collocation") return <WordQuiz mode="collocation" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} stats={globalStats.collocation} isMusicPlaying={isMusicPlaying} kpi={{target: dailyTarget, current: todayMasteredCount}} />;
-  if (screen === "grammar") return <GrammarQuiz onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} learnedQuestions={globalStats.grammar.learnedWords || []} kpi={{target: dailyTarget, current: todayMasteredCount}} />;
+  if (screen === "grammar") return <GrammarQuiz onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} learnedQuestions={globalStats.grammar.learnedWords || []} globalStats={globalStats} kpi={{target: dailyTarget, current: todayMasteredCount}} />;
   // --- TÍNH TOÁN THÔNG SỐ TỪ VỰNG ---
   const vocabTotal = globalStats.vocab.total;
   const vocabCorrect = globalStats.vocab.correct;
