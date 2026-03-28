@@ -241,7 +241,7 @@ function QuizSettings({ mode, onStart, onBack, customWordsCount = 0 }) {
 
   // THÊM: Tính toán min/max tự động cho thanh kéo
   let dynamicMin = mode === "grammar" ? 1 : 5;
-  let dynamicMax = mode === "grammar" ? 20 : 100;
+  let dynamicMax = mode === "grammar" ? 20 : (settings.difficultyLevel === 0 ? 20 : 100);
   
   // if (mode === "vocab" && settings.dataSource === "custom") {
   //     // Lấy chính xác số lượng từ ở sheet Custom làm Min
@@ -372,15 +372,19 @@ function QuizSettings({ mode, onStart, onBack, customWordsCount = 0 }) {
             </div>
             )}
 
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px" }}>⏱️ Thời gian/câu: <span style={{ color: "#FF9800" }}>{settings.timePerQuestion}s</span></label>
-              <input type="range" min="3" max="60" step="1" value={settings.timePerQuestion} onChange={(e) => setSettings({...settings, timePerQuestion: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer" }} />
-            </div>
+            {settings.difficultyLevel !== 0 && (
+              <div style={{ marginBottom: "20px" }}>
+                <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px" }}>⏱️ Thời gian/câu: <span style={{ color: "#FF9800" }}>{settings.timePerQuestion}s</span></label>
+                <input type="range" min="3" max="60" step="1" value={settings.timePerQuestion} onChange={(e) => setSettings({...settings, timePerQuestion: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer" }} />
+              </div>
+              )}
             
-            <div>
-              <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px" }}>🔓 Streak mở khóa nút Quay lại: <span style={{ color: "#2196F3" }}>{settings.requiredStreak}</span></label>
-              <input type="range" min="1" max="10" step="1" value={settings.requiredStreak} onChange={(e) => setSettings({...settings, requiredStreak: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer" }} />
-            </div>
+            {settings.difficultyLevel !== 0 && (
+              <div>
+                <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px" }}>🔓 Streak mở khóa nút Quay lại: <span style={{ color: "#2196F3" }}>{settings.requiredStreak}</span></label>
+                <input type="range" min="1" max="10" step="1" value={settings.requiredStreak} onChange={(e) => setSettings({...settings, requiredStreak: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer" }} />
+              </div>
+              )}
           </>
         )}
 
@@ -1391,8 +1395,9 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
                          
                          {/* Cột 2: Nội dung */}
                          <div style={{ flex: 1 }}>
-                             <div style={{ fontSize: "14px", fontWeight: "bold", color: "#444", marginBottom: "6px", lineHeight: "1.4" }}>{item.meaning}</div>
-                             
+                              <div style={{ fontSize: "14px", fontWeight: "bold", color: "#444", marginBottom: "6px", lineHeight: "1.4" }}>
+                                {item.meaning || [item.noun_meaning && `(n) ${item.noun_meaning}`, item.verb_meaning && `(v) ${item.verb_meaning}`, item.adj_meaning && `(adj) ${item.adj_meaning}`].filter(Boolean).join(" · ") || "❓ Không có gợi ý"}
+                              </div>                             
                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                  <input
                                      ref={(el) => bossInputRefs.current[idx] = el} 
