@@ -3207,11 +3207,16 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
 
   // --- ĐÃ NÂNG CẤP: THÊM NÚT "V" CHO CẢ Ô VÀNG VÀ Ô ĐỎ ---
   const renderTags = (wordsArray, color, bgColor, listType, limit = null) => {
-      if (!wordsArray || wordsArray.length === 0) return <p style={{ color: "#aaa", fontSize: "14px", fontStyle: "italic", margin: 0 }}>Chưa có từ nào.</p>;
-      const displayWords = limit ? wordsArray.slice(0, limit) : wordsArray;
-      
-      return (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+    if (!wordsArray || wordsArray.length === 0) return <p style={{ color: "#aaa", fontSize: "14px", fontStyle: "italic", margin: 0 }}>Chưa có từ nào.</p>;
+    const sorted = [...wordsArray].sort((a, b) => {
+        const wa = (typeof a === 'string' ? a : a.word).toLowerCase();
+        const wb = (typeof b === 'string' ? b : b.word).toLowerCase();
+        return wa.localeCompare(wb);
+    });
+    const displayWords = limit ? sorted.slice(0, limit) : sorted;
+    
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               {displayWords.map(word => {
                   const wordStr = typeof word === 'string' ? word : word.word;
                   return (
