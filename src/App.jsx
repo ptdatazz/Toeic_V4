@@ -3381,8 +3381,16 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                             <div style={{ textAlign: "left", backgroundColor: "#f0f8ff", padding: "15px", borderRadius: "8px", marginTop: "15px", border: "1px dashed #90caf9", flex: 1 }}>
                                 {/* ĐÃ FIX: Hiện Công Thức nếu đang ở Tab Ngữ Pháp */}
                                 {wordDetailModal.detail.phonetic && (
-                                    <p style={{ margin: "0 0 10px 0", fontSize: "15px", fontStyle: "italic", color: "#666" }}>
+                                    <p style={{ margin: "0 0 10px 0", fontSize: "15px", fontStyle: "italic", color: "#666", display: "flex", alignItems: "center", gap: "8px" }}>
                                         {activeTab === "grammar" ? `📐 ${wordDetailModal.detail.phonetic}` : wordDetailModal.detail.phonetic}
+                                        {activeTab !== "grammar" && (
+                                            <button
+                                                onClick={() => speakWord(wordDetailModal.wordStr, 'en-US')}
+                                                style={{ background: "none", border: "none", cursor: "pointer", fontSize: "18px", padding: "2px 6px", borderRadius: "50%", backgroundColor: "#e3f2fd", lineHeight: 1 }}
+                                            >
+                                                🔊
+                                            </button>
+                                        )}
                                     </p>
                                 )}
                                 {/* Hiển thị nghĩa theo từng loại từ */}
