@@ -2212,6 +2212,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
           const listData = await listRes.json();
           const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods?.includes("generateContent"));
           const flashModel = textModels.find(m => m.name.includes("flash"));
+          if (!flashModel && textModels.length === 0) throw new Error("Không tìm được model từ API");
           window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
         }
 
@@ -3218,18 +3219,40 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                           
                           {/* 1. Phần Bấm vào Chữ để mở Modal */}
                           <span
-                              onClick={(e) => {
-                                  if (e.ctrlKey || e.metaKey) {
-                                      e.stopPropagation();
-                                      setSelectedToDelete(prev => {
-                                          const next = new Set(prev);
-                                          next.has(wordStr) ? next.delete(wordStr) : next.add(wordStr);
-                                          return next;
-                                      });
-                                  } else {
-                                      openDetail(wordStr, listType);
-                                  }
-                              }}
+                            onTouchStart={(e) => {
+                                const timer = setTimeout(() => {
+                                    e.stopPropagation();
+                                    setSelectedToDelete(prev => {
+                                        const next = new Set(prev);
+                                        next.has(wordStr) ? next.delete(wordStr) : next.add(wordStr);
+                                        return next;
+                                    });
+                                }, 500);
+                                e._longPressTimer = timer;
+                            }}
+                            onTouchEnd={(e) => {
+                                if (e._longPressTimer) clearTimeout(e._longPressTimer);
+                                if (selectedToDelete.size > 0) {
+                                    e.preventDefault();
+                                    setSelectedToDelete(prev => {
+                                        const next = new Set(prev);
+                                        next.has(wordStr) ? next.delete(wordStr) : next.add(wordStr);
+                                        return next;
+                                    });
+                                }
+                            }}
+                            onClick={(e) => {
+                                if (e.ctrlKey || e.metaKey) {
+                                    e.stopPropagation();
+                                    setSelectedToDelete(prev => {
+                                        const next = new Set(prev);
+                                        next.has(wordStr) ? next.delete(wordStr) : next.add(wordStr);
+                                        return next;
+                                    });
+                                } else if (selectedToDelete.size === 0) {
+                                    openDetail(wordStr, listType);
+                                }
+                            }}
                               style={{
                                   padding: "6px 36px 6px 12px", borderRadius: "20px", fontSize: "14px",
                                   backgroundColor: selectedToDelete.has(wordStr) ? "#ffebee" : bgColor,
@@ -3382,7 +3405,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
               </div>
               {/* {selectedToDelete.size === 0 && <p style={{ fontSize: "12px", color: "#aaa", margin: "0 0 8px 0" }}>💡 Giữ Ctrl + click để chọn nhiều từ xóa cùng lúc</p>} */}
               </div>
-              {selectedToDelete.size === 0 && <p style={{ fontSize: "12px", color: "#aaa", margin: "0 0 10px 0" }}>💡 Giữ Ctrl + click để chọn nhiều từ xóa cùng lúc</p>}
+              {selectedToDelete.size === 0 && <p style={{ fontSize: "12px", color: "#aaa", margin: "0 0 10px 0" }}>💡 PC: Giữ Ctrl + click · Mobile: Nhấn giữ để chọn nhiều từ</p>}
                 <div style={{ overflowY: "auto", flex: 1, padding: "10px 0" }}>
                    {renderTags(globalStats[activeTab][viewAllModal.listType] || [], viewAllModal.color, viewAllModal.bgColor, viewAllModal.listType, null)}
                 </div>
