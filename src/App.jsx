@@ -3220,18 +3220,27 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                           {/* 1. Phần Bấm vào Chữ để mở Modal */}
                           <span
                             onTouchStart={(e) => {
+                                let isLongPress = false;
                                 const timer = setTimeout(() => {
-                                    e.stopPropagation();
+                                    isLongPress = true;
                                     setSelectedToDelete(prev => {
                                         const next = new Set(prev);
                                         next.has(wordStr) ? next.delete(wordStr) : next.add(wordStr);
                                         return next;
                                     });
                                 }, 500);
-                                e._longPressTimer = timer;
+                                e.currentTarget._longPressTimer = timer;
+                                e.currentTarget._isLongPress = false;
+                                e.currentTarget._longPressTimer2 = () => isLongPress;
                             }}
                             onTouchEnd={(e) => {
-                                if (e._longPressTimer) clearTimeout(e._longPressTimer);
+                                clearTimeout(e.currentTarget._longPressTimer);
+                                const wasLongPress = e.currentTarget._longPressTimer2?.();
+                                if (wasLongPress) {
+                                    e.preventDefault(); // Chặn click sau long press, KHÔNG toggle lại
+                                    return;
+                                }
+                                // Nếu đang ở chế độ chọn nhiều và chỉ tap nhẹ -> toggle từ đó
                                 if (selectedToDelete.size > 0) {
                                     e.preventDefault();
                                     setSelectedToDelete(prev => {
