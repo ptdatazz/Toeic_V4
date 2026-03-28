@@ -25,6 +25,9 @@ const rotateKey = () => {
         console.log(`[HỆ THỐNG] 🔄 Đã tự động chuyển toàn bộ App sang API Key dự phòng số ${globalKeyIndex + 1}`);
         return true; 
     }
+    // Đã hết key → reset về đầu để thử lại từ key 1 (tránh kẹt ở key cuối)
+    globalKeyIndex = 0;
+    console.log(`[HỆ THỐNG] 🔁 Đã reset về Key số 1 để thử lại vòng mới`);
     return false; 
 };
 
@@ -2945,7 +2948,7 @@ function ModeSelectionScreen({ onModeSelect, onNotebookClick }) {
                 alignItems: "center",
                 justifyContent: "center",
                 cursor: "pointer",
-                padding: "20px",
+                padding: "clamp(12px, 4vw, 20px)",
                 boxShadow: "0 6px 15px rgba(0,0,0,0.15)",
                 transition: "0.2s",
                 userSelect: "none"
@@ -2954,8 +2957,8 @@ function ModeSelectionScreen({ onModeSelect, onNotebookClick }) {
             onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.05)"}
             onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
         >
-            <span style={{ fontSize: "50px", marginBottom: "12px", filter: "drop-shadow(0px 4px 4px rgba(0,0,0,0.2))" }}>{icon}</span>
-            <span style={{ fontSize: "17px", fontWeight: "bold", textAlign: "center", textShadow: "0px 1px 2px rgba(0,0,0,0.3)" }}>{title}</span>
+            <span style={{ fontSize: "clamp(32px, 10vw, 50px)", marginBottom: "8px", filter: "drop-shadow(0px 4px 4px rgba(0,0,0,0.2))" }}>{icon}</span>
+            <span style={{ fontSize: "clamp(13px, 4vw, 17px)", fontWeight: "bold", textAlign: "center", textShadow: "0px 1px 2px rgba(0,0,0,0.3)" }}>{title}</span>
         </div>
     );
 
@@ -2964,8 +2967,7 @@ function ModeSelectionScreen({ onModeSelect, onNotebookClick }) {
             {/* ĐÃ XÓA DÒNG CHỮ "Chọn Chế Độ Học" Ở ĐÂY ĐỂ GIAO DIỆN GỌN HƠN */}
             
             {/* GRID ĐÚNG 4 Ô CÂN ĐỐI */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-                {renderModeBox("Sổ Tay", "📖", "#FF9800", "notebook")}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "clamp(10px, 3vw, 20px)" }}>                {renderModeBox("Sổ Tay", "📖", "#FF9800", "notebook")}
                 {renderModeBox("Ôn Từ Vựng", "🚀", "#4CAF50", "vocab_settings")}
                 {renderModeBox("Ôn Colloc.", "📚", "#9C27B0", "collocation_settings")}
                 {renderModeBox("Ôn Ngữ Pháp", "📐", "#2196F3", "grammar_settings")}
@@ -2981,6 +2983,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
   const [activeTab, setActiveTab] = useState("vocab");
   const [newWord, setNewWord] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+  const [selectedToDelete, setSelectedToDelete] = useState(new Set());
   const [isReloading, setIsReloading] = useState(false);
   const [reloadProgress, setReloadProgress] = useState({ done: 0, total: 0 }); 
 
@@ -2998,9 +3001,21 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
       if (!window.globalCachedModel) {
           const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
           const listData = await listRes.json();
+          if (listData.error) {
+              const msg = listData.error.message?.toLowerCase() || "";
+              if (msg.includes("quota") || msg.includes("expired") || listData.error.code === 429 || listData.error.code === 400) {
+                  if (rotateKey()) {
+                      await new Promise(r => setTimeout(r, 1500));
+                      return fetchAI(wordInput, currentTab);
+                  }
+              }
+              throw new Error(listData.error.message);
+          }
           const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
-          const flashModel = textModels.find(m => m.name.includes("flash"));
-          window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
+          const fastModel = textModels.find(m => m.name.includes("2.0-flash-lite"))
+              || textModels.find(m => m.name.includes("1.5-flash"))
+              || textModels.find(m => m.name.includes("flash"));
+          window.globalCachedModel = fastModel ? fastModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
       }
 
       let prompt = currentTab === "grammar" 
@@ -3027,6 +3042,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
           throw new Error("Hết toàn bộ Key dự phòng!");
       }
 
+      if (!data.candidates?.[0]?.content?.parts?.[0]?.text) throw new Error("AI không trả về nội dung.");
       let rawText = data.candidates[0].content.parts[0].text;
       const jsonMatch = rawText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
       if (jsonMatch) rawText = jsonMatch[0];
@@ -3041,9 +3057,21 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
       if (!window.globalCachedModel) {
           const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
           const listData = await listRes.json();
+          if (listData.error) {
+              const msg = listData.error.message?.toLowerCase() || "";
+              if (msg.includes("quota") || msg.includes("expired") || listData.error.code === 429 || listData.error.code === 400) {
+                  if (rotateKey()) {
+                      await new Promise(r => setTimeout(r, 1500));
+                      return fetchAIBatch(wordsString, currentTab);
+                  }
+              }
+              throw new Error(listData.error.message);
+          }
           const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
-          const flashModel = textModels.find(m => m.name.includes("flash"));
-          window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
+          const fastModel = textModels.find(m => m.name.includes("2.0-flash-lite"))
+              || textModels.find(m => m.name.includes("1.5-flash"))
+              || textModels.find(m => m.name.includes("flash"));
+          window.globalCachedModel = fastModel ? fastModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
       }
 
       let prompt = currentTab === "grammar"
@@ -3061,14 +3089,19 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
       });
       const data = await res.json();
 
-      if (data.error && (data.error.message.toLowerCase().includes("quota") || data.error.message.toLowerCase().includes("expired") || data.error.code === 429)) {
+      if (data.error) {
+          const msg = data.error.message?.toLowerCase() || "";
           window.globalCachedModel = null;
-          if (rotateKey()) {
-              await new Promise(r => setTimeout(r, 1500));
-              return fetchAIBatch(wordsString, currentTab);
+          if (msg.includes("quota") || msg.includes("expired") || data.error.code === 429) {
+              if (rotateKey()) {
+                  await new Promise(r => setTimeout(r, 1500));
+                  return fetchAIBatch(wordsString, currentTab);
+              }
+              throw new Error("Hết toàn bộ Key dự phòng!");
           }
-          throw new Error("Hết toàn bộ Key dự phòng!");
+          throw new Error(data.error.message);
       }
+      if (!data.candidates?.[0]?.content?.parts?.[0]?.text) throw new Error("AI không trả về nội dung.");
 
       let rawText = data.candidates[0].content.parts[0].text;
       
@@ -3179,8 +3212,29 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                       <div key={wordStr} style={{ position: "relative", display: "inline-flex", alignItems: "center", textTransform: "none" }}>
                           
                           {/* 1. Phần Bấm vào Chữ để mở Modal */}
-                          <span onClick={() => openDetail(wordStr, listType)} style={{ padding: "6px 36px 6px 12px", borderRadius: "20px", fontSize: "14px", backgroundColor: bgColor, color: color, fontWeight: "500", cursor: "pointer", border: `1px solid ${color}80`, boxShadow: "0 2px 4px rgba(0,0,0,0.05)" }}>
-                              {wordStr}
+                          <span
+                              onClick={(e) => {
+                                  if (e.ctrlKey || e.metaKey) {
+                                      e.stopPropagation();
+                                      setSelectedToDelete(prev => {
+                                          const next = new Set(prev);
+                                          next.has(wordStr) ? next.delete(wordStr) : next.add(wordStr);
+                                          return next;
+                                      });
+                                  } else {
+                                      openDetail(wordStr, listType);
+                                  }
+                              }}
+                              style={{
+                                  padding: "6px 36px 6px 12px", borderRadius: "20px", fontSize: "14px",
+                                  backgroundColor: selectedToDelete.has(wordStr) ? "#ffebee" : bgColor,
+                                  color: selectedToDelete.has(wordStr) ? "#f44336" : color,
+                                  fontWeight: "500", cursor: "pointer",
+                                  border: selectedToDelete.has(wordStr) ? "2px solid #f44336" : `1px solid ${color}80`,
+                                  boxShadow: selectedToDelete.has(wordStr) ? "0 0 0 2px #ffcdd2" : "0 2px 4px rgba(0,0,0,0.05)",
+                                  transition: "all 0.15s"
+                              }}>
+                              {selectedToDelete.has(wordStr) ? "✓ " : ""}{wordStr}
                           </span>
                           
                           {/* 2. Cụm Nút Bấm Chức Năng (V và X) */}
@@ -3304,15 +3358,30 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
 
       {/* 1. OVERLAY MODAL: XEM TẤT CẢ (CÓ THANH CUỘN) - ĐÃ FIX REALTIME */}
       {viewAllModal && (
-        <div onClick={() => { playSound("click"); setViewAllModal(null); }} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px", boxSizing: "border-box", cursor: "pointer" }}>
+        <div onClick={() => { playSound("click"); setSelectedToDelete(new Set()); setViewAllModal(null); }} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px", boxSizing: "border-box", cursor: "pointer" }}>
             <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: "white", width: "100%", maxWidth: "400px", borderRadius: "15px", padding: "20px", maxHeight: "80vh", display: "flex", flexDirection: "column", animation: "popIn 0.3s", boxShadow: "0 10px 30px rgba(0,0,0,0.2)", cursor: "default" }}>
-              <h3 style={{ color: viewAllModal.color, marginTop: 0, borderBottom: "1px solid #eee", paddingBottom: "10px" }}>
-                  {viewAllModal.title} ({(globalStats[activeTab][viewAllModal.listType] || []).length})
-              </h3>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "10px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "8px" }}>
+                  <h3 style={{ color: viewAllModal.color, margin: 0 }}>
+                      {viewAllModal.title} ({(globalStats[activeTab][viewAllModal.listType] || []).length})
+                  </h3>
+                  {selectedToDelete.size > 0 && (
+                      <button onClick={() => {
+                          if (!window.confirm(`Xóa ${selectedToDelete.size} từ đã chọn?`)) return;
+                          selectedToDelete.forEach(w => onRemoveWord(activeTab, viewAllModal.listType, w));
+                          setSelectedToDelete(new Set());
+                      }} style={{ padding: "6px 14px", backgroundColor: "#f44336", color: "white", border: "none", borderRadius: "20px", fontWeight: "bold", cursor: "pointer", fontSize: "13px" }}>
+                          🗑️ Xóa {selectedToDelete.size} từ
+                      </button>
+                  )}
+              </div>
+              {/* {selectedToDelete.size === 0 && <p style={{ fontSize: "12px", color: "#aaa", margin: "0 0 8px 0" }}>💡 Giữ Ctrl + click để chọn nhiều từ xóa cùng lúc</p>} */}
+              </div>
+              {selectedToDelete.size === 0 && <p style={{ fontSize: "12px", color: "#aaa", margin: "0 0 10px 0" }}>💡 Giữ Ctrl + click để chọn nhiều từ xóa cùng lúc</p>}
                 <div style={{ overflowY: "auto", flex: 1, padding: "10px 0" }}>
                    {renderTags(globalStats[activeTab][viewAllModal.listType] || [], viewAllModal.color, viewAllModal.bgColor, viewAllModal.listType, null)}
                 </div>
-                <button onClick={() => { playSound("click"); setViewAllModal(null); }} style={{ width: "100%", padding: "12px", marginTop: "15px", fontSize: "16px", backgroundColor: "#e0e0e0", color: "#333", borderRadius: "8px", border: "none", cursor: "pointer", fontWeight: "bold" }}>Đóng</button>
+                <button onClick={() => { playSound("click"); setSelectedToDelete(new Set()); setViewAllModal(null); }} style={{ width: "100%", padding: "12px", marginTop: "15px", fontSize: "16px", backgroundColor: "#e0e0e0", color: "#333", borderRadius: "8px", border: "none", cursor: "pointer", fontWeight: "bold" }}>Đóng</button>
             </div>
         </div>
       )}
