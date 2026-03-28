@@ -668,9 +668,9 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
           const wordListStr = availableWords.map(w => w.word).join(", ");
           let aiKeywords = []; // Chuyển thành mảng để hứng nhiều từ AI đẻ ra
 
-          // TÍNH TOÁN ĐỘ DÀI RANDOM TỪ 3 - 10 KÝ TỰ (Không vượt quá số từ đang học)
-          const maxPossibleLen = Math.min(availableWords.length, 15);
-          const targetRandomLen = Math.floor(Math.random() * (maxPossibleLen - 3 + 1)) + 3;
+          // Độ dài từ khóa = đúng bằng số từ đang học (QUIZ_LIMIT), giới hạn 5-15
+          const maxPossibleLen = Math.min(availableWords.length, 20);
+          const targetRandomLen = Math.max(5, Math.min(QUIZ_LIMIT, maxPossibleLen));
 
           // 1. GỌI AI ĐỂ SINH DANH SÁCH TỪ KHÓA DỰA TRÊN TỪ VỰNG VỪA HỌC
           try {
@@ -695,7 +695,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
                   // BƯỚC 2: Gọi AI bằng Model tự động
                   const prompt = `Tôi vừa học các từ vựng tiếng Anh sau: ${wordListStr}. Hãy nghĩ ra 10 từ khóa tiếng Anh bí mật khác nhau.
                   YÊU CẦU BẮT BUỘC:
-                  - Độ dài mỗi từ khóa nằm trong khoảng từ 3 đến ${maxPossibleLen} chữ cái.
+                  - Độ dài mỗi từ khóa phải đúng ${targetRandomLen} chữ cái.
                   - Từ khóa phải liên quan đến chủ đề chung của các từ vựng trên, hoặc mang ý nghĩa cổ vũ (như WIN, FOCUS, MASTER, SUCCESS).
                   - CHỈ TRẢ VỀ DANH SÁCH 10 TỪ, phân tách nhau bằng dấu phẩy (,). Không giải thích gì thêm, viết hoa toàn bộ.`;
                   
