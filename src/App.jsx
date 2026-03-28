@@ -326,7 +326,7 @@ function QuizSettings({ mode, onStart, onBack, customWordsCount = 0 }) {
           </label>
           <input 
             type="range" 
-            min={mode === "grammar" ? "1" : "0"} 
+            min="0" 
             max="4" step="1" 
             value={settings.difficultyLevel} 
             onChange={(e) => setSettings({...settings, difficultyLevel: parseInt(e.target.value)})} 
@@ -351,13 +351,12 @@ function QuizSettings({ mode, onStart, onBack, customWordsCount = 0 }) {
 
         {settings.difficultyLevel <= 2 && (
           <>
+            {(mode !== "grammar" || (settings.toeicPart !== "part6" && settings.toeicPart !== "part7")) && (
             <div style={{ marginBottom: "20px" }}>
               <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px" }}>
                 📚 Số câu mỗi lượt: <span style={{ color: primaryColor }}>{settings.quizLimit}</span>
-                {/* {settings.dataSource === "custom" && customWordsCount > 0 && (
-                   <span style={{ fontSize: "12px", color: "#F44336", marginLeft: "10px", backgroundColor: "#ffebee", padding: "2px 6px", borderRadius: "4px" }}>(Min: {customWordsCount} từ ở sheet Custom)</span>
-                )} */}
               </label>
+              
               <input 
                 type="range" 
                 min={dynamicMin} 
@@ -368,6 +367,7 @@ function QuizSettings({ mode, onStart, onBack, customWordsCount = 0 }) {
                 style={{ width: "100%", cursor: "pointer" }} 
               />
             </div>
+            )}
 
             <div style={{ marginBottom: "20px" }}>
               <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px" }}>⏱️ Thời gian/câu: <span style={{ color: "#FF9800" }}>{settings.timePerQuestion}s</span></label>
@@ -484,15 +484,17 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
               setKeywordExplanation("Không tìm thấy API Key để tra cứu AI.");
               setIsFetchingExplanation(false); return;
           }
-          const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
-          const listData = await listRes.json();
-          const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
-          const flashModel = textModels.find(m => m.name.includes("flash"));
-          const selectedModel = flashModel ? flashModel.name : textModels[0].name; 
+          if (!window.globalCachedModel) {
+              const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
+              const listData = await listRes.json();
+              const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
+              const flashModel = textModels.find(m => m.name.includes("flash"));
+              window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
+          }
 
           const prompt = `Giải thích ngắn gọn ý nghĩa của từ tiếng Anh "${keyword}" bằng tiếng Việt. Cung cấp phiên âm, từ loại, nghĩa chính và 1 ví dụ thực tế. Giữ nội dung xúc tích dưới 4 dòng.`;
           
-          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${selectedModel}:generateContent?key=${API_KEY}`;
+          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${API_KEY}`;
           const res = await fetch(apiUrl, {
               method: "POST", headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
@@ -682,13 +684,13 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
                   const timeoutId = setTimeout(() => controller.abort(), 10000);
 
                   // BƯỚC 1: Lấy danh sách Model chuẩn xác nhất từ Google
-                  const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`, { signal: controller.signal });
-                  const listData = await listRes.json();
-                  const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
-                  
-                  // Chọn model 1.5-flash hoặc model khả dụng đầu tiên
-                  const flashModel = textModels.find(m => m.name.includes("1.5-flash")) || textModels.find(m => m.name.includes("flash"));
-                  const selectedModel = flashModel ? flashModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
+                  if (!window.globalCachedModel) {
+                      const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`, { signal: controller.signal });
+                      const listData = await listRes.json();
+                      const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
+                      const flashModel = textModels.find(m => m.name.includes("1.5-flash")) || textModels.find(m => m.name.includes("flash"));
+                      window.globalCachedModel = flashModel ? flashModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
+                  }
 
                   // BƯỚC 2: Gọi AI bằng Model tự động
                   const prompt = `Tôi vừa học các từ vựng tiếng Anh sau: ${wordListStr}. Hãy nghĩ ra 10 từ khóa tiếng Anh bí mật khác nhau.
@@ -697,7 +699,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
                   - Từ khóa phải liên quan đến chủ đề chung của các từ vựng trên, hoặc mang ý nghĩa cổ vũ (như WIN, FOCUS, MASTER, SUCCESS).
                   - CHỈ TRẢ VỀ DANH SÁCH 10 TỪ, phân tách nhau bằng dấu phẩy (,). Không giải thích gì thêm, viết hoa toàn bộ.`;
                   
-                  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${selectedModel}:generateContent?key=${API_KEY}`;
+                  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${API_KEY}`;
                   const res = await fetch(apiUrl, {
                       method: "POST", headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
@@ -1800,7 +1802,8 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
   const [isSaved, setIsSaved] = useState(false);
   const [sidePanelResult, setSidePanelResult] = useState(null);
   const [sidePanelLoading, setSidePanelLoading] = useState(false);
-  const sidePanelLockRef = useRef(false); // Chống spam gọi đồng thời
+  const sidePanelLockRef = useRef(false);
+  const sidePanelDebounceRef = useRef(null); // Chống gọi liên tục khi bôi đen
 
   // 1. TẢI TỪ ĐIỂN GOOGLE SHEET NGAY KHI VÀO GAME ĐỂ DÙNG DẦN
   useEffect(() => {
@@ -1851,7 +1854,11 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
                           return dictWord === searched || dictWord.startsWith(searched) || searched.startsWith(dictWord);
                       });
 
-                      if (sidePanelLockRef.current) return; // Chống spam
+                      // Debounce 600ms: chỉ gọi AI sau khi người dùng dừng bôi đen
+                      clearTimeout(sidePanelDebounceRef.current);
+                      sidePanelDebounceRef.current = setTimeout(async () => {
+                      if (sidePanelLockRef.current) return;
+
                       sidePanelLockRef.current = true;
                       try {
                           const doLookup = async () => {
@@ -1891,6 +1898,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
                           setSidePanelLoading(false);
                           sidePanelLockRef.current = false; // Mở khóa
                       }
+                      }, 600);
                   }
                   return;
               }
@@ -2059,7 +2067,15 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
       // Part 6/7/scan_skim: cấu trúc mới - mảng đoạn văn, mỗi đoạn có nhiều câu
       const isPassageMode = ["part6", "part7", "scan_skim"].includes(TOEIC_PART);
       const PASSAGE_TYPES = ["email", "thông báo nội bộ", "quảng cáo sản phẩm/dịch vụ", "bài báo kinh doanh", "thư mời", "hướng dẫn sử dụng", "thông cáo báo chí", "lịch trình công tác"];
-      const numPassages = Math.max(1, Math.ceil(QUIZ_LIMIT / (TOEIC_PART === "part7" ? 4 : 3)));
+      // Part6: cố định 4 lỗ/đoạn, 1 đoạn
+      // Part7: random 4 hoặc 5 câu/đoạn, 1 đoạn
+      const questionsPerPassage = TOEIC_PART === "part6" ? 4
+                                : TOEIC_PART === "part7" ? (Math.random() > 0.5 ? 4 : 5)
+                                : 3; // scan_skim
+      const numPassages = (TOEIC_PART === "part6" || TOEIC_PART === "part7")
+          ? 1
+          : Math.max(1, Math.round(QUIZ_LIMIT / questionsPerPassage));
+      const adjustedQuizLimit = numPassages * questionsPerPassage;
 
       let prompt = "";
 
@@ -2086,15 +2102,14 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
 
                   } else {
                     // PART 6/7/SCAN_SKIM: cấu trúc mới - đoạn văn + nhiều câu hỏi
-                    const questionsPerPassage = TOEIC_PART === "part7" ? 4 : 3;
                     const passageTypeList = Array.from({length: numPassages}, (_, i) => PASSAGE_TYPES[i % PASSAGE_TYPES.length]).join(', ');
 
-                    const part6Instruction = `- Đoạn văn có đúng ${questionsPerPassage} chỗ trống được đánh số (___1___, ___2___, ___3___).
-            - Mỗi câu hỏi ứng với 1 chỗ trống theo thứ tự.
-            - "question": ghi rõ "Câu 1: Chọn từ điền vào ô ___1___" (tương tự cho 2, 3).`;
+                    const part6Instruction = `- Đoạn văn có đúng 4 chỗ trống được đánh số (___1___, ___2___, ___3___, ___4___).
+            - Tạo đúng 4 câu hỏi, mỗi câu ứng với 1 chỗ trống theo thứ tự.
+            - "question": ghi rõ "Câu 1: Chọn từ điền vào ô ___1___" (tương tự cho 2, 3, 4).`;
 
                     const part7Instruction = `- Đoạn văn hoàn chỉnh KHÔNG có chỗ trống.
-            - Tạo ${questionsPerPassage} câu hỏi đọc hiểu đa dạng: hỏi ý chính, chi tiết, suy luận, từ vựng trong ngữ cảnh.
+            - Tạo đúng ${questionsPerPassage} câu hỏi đọc hiểu đa dạng: hỏi ý chính, chi tiết, suy luận, từ vựng trong ngữ cảnh.
             - "question": câu hỏi đọc hiểu thực sự (What is the purpose of...? / According to the passage...? / What can be inferred...?)`;
 
                     const scanSkimInstruction = `- Đoạn văn dài, nhiều thông tin số liệu.
@@ -2209,7 +2224,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
               });
             });
           });
-          finalPool = finalPool.slice(0, QUIZ_LIMIT);
+          finalPool = finalPool.slice(0, adjustedQuizLimit);
         } else {
           finalPool = parsed.map(q => {
             const shuffledOptions = shuffleArray(q.options);
@@ -3218,19 +3233,56 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
         };
         return (
         <div onClick={closeDetailModal} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.7)", zIndex: 1100, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px", boxSizing: "border-box", cursor: "pointer" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%", maxWidth: "430px" }} onClick={(e) => e.stopPropagation()}>
-                <button onClick={() => goTo(-1)} disabled={currentIdx <= 0}
-                    style={{ flexShrink: 0, width: "36px", height: "60px", borderRadius: "10px", border: "none", backgroundColor: currentIdx <= 0 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.9)", fontSize: "22px", cursor: currentIdx <= 0 ? "not-allowed" : "pointer", boxShadow: "0 3px 10px rgba(0,0,0,0.2)" }}>‹</button>
+            <div style={{ width: "100%", maxWidth: "430px" }} onClick={(e) => e.stopPropagation()}>
 
-            <div style={{ backgroundColor: "white", flex: 1, borderRadius: "16px", padding: "25px", textAlign: "center", animation: "popIn 0.3s", boxShadow: "0 10px 30px rgba(0,0,0,0.3)", cursor: "default" }}>   
-                {/* Số thứ tự */}
-                {currentIdx >= 0 && <p style={{ margin: "0 0 5px 0", fontSize: "12px", color: "#aaa" }}>{currentIdx + 1} / {currentList.length}</p>}
-                <h2 style={{ fontSize: "28px", color: "#2196F3", margin: "0 0 5px 0" }}>{wordDetailModal.wordStr}</h2>
-                
+            <div style={{ backgroundColor: "white", borderRadius: "16px", padding: "22px 25px 25px", textAlign: "center", animation: "popIn 0.3s", boxShadow: "0 10px 30px rgba(0,0,0,0.3)", cursor: "default", height: "480px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+                    <button onClick={() => goTo(-1)} disabled={currentIdx <= 0} style={{
+                        width: "34px", height: "34px", borderRadius: "50%", border: "none",
+                        backgroundColor: currentIdx <= 0 ? "#f5f5f5" : "#e3f2fd",
+                        color: currentIdx <= 0 ? "#ccc" : "#1565c0",
+                        fontSize: "20px", cursor: currentIdx <= 0 ? "not-allowed" : "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        boxShadow: currentIdx <= 0 ? "none" : "0 2px 8px rgba(33,150,243,0.25)",
+                        transition: "all 0.2s", flexShrink: 0
+                    }}>‹</button>
+
+                    {currentIdx >= 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                            {Array.from({length: Math.min(currentList.length, 7)}, (_, i) => {
+                                const offset = Math.max(0, Math.min(currentIdx - 3, currentList.length - 7));
+                                const realIdx = i + offset;
+                                return (
+                                    <div key={realIdx} style={{
+                                        width: realIdx === currentIdx ? "18px" : "6px",
+                                        height: "6px", borderRadius: "3px",
+                                        backgroundColor: realIdx === currentIdx ? "#2196F3" : "#ddd",
+                                        transition: "all 0.3s", flexShrink: 0
+                                    }} />
+                                );
+                            })}
+                            <span style={{ fontSize: "12px", color: "#aaa", marginLeft: "4px", whiteSpace: "nowrap" }}>
+                                {currentIdx + 1}/{currentList.length}
+                            </span>
+                        </div>
+                    )}
+
+                    <button onClick={() => goTo(1)} disabled={currentIdx >= currentList.length - 1} style={{
+                        width: "34px", height: "34px", borderRadius: "50%", border: "none",
+                        backgroundColor: currentIdx >= currentList.length - 1 ? "#f5f5f5" : "#e3f2fd",
+                        color: currentIdx >= currentList.length - 1 ? "#ccc" : "#1565c0",
+                        fontSize: "20px", cursor: currentIdx >= currentList.length - 1 ? "not-allowed" : "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        boxShadow: currentIdx >= currentList.length - 1 ? "none" : "0 2px 8px rgba(33,150,243,0.25)",
+                        transition: "all 0.2s", flexShrink: 0
+                    }}>›</button>
+                </div>
+
+                <h2 style={{ fontSize: "26px", color: "#2196F3", margin: "0 0 5px 0" }}>{wordDetailModal.wordStr}</h2>
                 {!isEditingManual && (
                     <>
                         {wordDetailModal.detail ? (
-                            <div style={{ textAlign: "left", backgroundColor: "#f0f8ff", padding: "15px", borderRadius: "8px", marginTop: "15px", border: "1px dashed #90caf9" }}>
+                            <div style={{ textAlign: "left", backgroundColor: "#f0f8ff", padding: "15px", borderRadius: "8px", marginTop: "15px", border: "1px dashed #90caf9", flex: 1 }}>
                                 {/* ĐÃ FIX: Hiện Công Thức nếu đang ở Tab Ngữ Pháp */}
                                 {wordDetailModal.detail.phonetic && (
                                     <p style={{ margin: "0 0 10px 0", fontSize: "15px", fontStyle: "italic", color: "#666" }}>
@@ -3294,11 +3346,8 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                     </div>
                 )}
             </div>
-                {/* NÚT NEXT */}
-                <button onClick={() => goTo(1)} disabled={currentIdx >= currentList.length - 1}
-                    style={{ flexShrink: 0, width: "36px", height: "60px", borderRadius: "10px", border: "none", backgroundColor: currentIdx >= currentList.length - 1 ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.9)", fontSize: "22px", cursor: currentIdx >= currentList.length - 1 ? "not-allowed" : "pointer", boxShadow: "0 3px 10px rgba(0,0,0,0.2)" }}>›</button>
+             </div>
             </div>
-        </div>
         )
       })()}
     </div>
