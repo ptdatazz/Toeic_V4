@@ -726,7 +726,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
 
           // 2. TẠO MẠNG LƯỚI CROSSWORD TỪ TỪ KHÓA
           // PHỤC HỒI LẠI DANH SÁCH TỪ KHÓA DỰ PHÒNG XỊN SÒ (Của bác đang bị mất, chỉ còn chữ "WIN")
-          const fallbacks = ["WIN", "TOP", "PRO", "YES", "BEST", "GOOD", "FAST", "LEAD", "SMART", "GREAT", "FOCUS", "SUPER", "EXPERT", "MASTER", "WINNER", "GENIUS", "SUCCESS", "CHAMPION", "BRILLIANT"];
+          const fallbacks = ["WIN", "TOP", "PRO", "YES", "BEST", "GOOD", "FAST", "LEAD", "SMART", "GREAT", "FOCUS", "SUPER", "EXPERT", "MASTER", "WINNER", "GENIUS", "SUCCESS", "CHAMPION", "BRILLIANT","Dream", "Light", "Smile", "Brave", "Peace", "Future", "Beauty", "Spirit", "Strong", "Wisdom", "Success", "Freedom", "Passion", "Believe", "Journey", "Happiness", "Adventure", "Brilliant", "Confidence", "Motivation", "Creativity", "Inspiration", "Determination", "Perseverance", "Understanding", "Communication", "Imagination", "Responsibility", "Extraordinary", "Internationalization","Counterintelligence", "Hypercommunication", "Electroencephalogram", "Internationalization", "Counterrevolutionary","Characterization", "Misunderstanding", "Overachievement", "Interconnection", "Hyperactivation","Motivation", "Creativity", "Confidence", "Leadership", "Innovation","Dream", "Light", "Smile", "Brave", "Peace"];
           
           let validFallbacks = fallbacks.filter(w => w.length <= maxPossibleLen);
           validFallbacks = shuffleArray(validFallbacks); 
