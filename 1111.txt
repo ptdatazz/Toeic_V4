@@ -1,0 +1,9 @@
+useEffect(() => {
+          if (!wordDetailModal) return;
+          const handleKey = (e) => {
+            if (e.key === "ArrowRight") goTo(1);
+            if (e.key === "ArrowLeft") goTo(-1);
+          };
+          window.addEventListener("keydown", handleKey);
+          return () => window.removeEventListener("keydown", handleKey);
+        }, [wordDetailModal]);

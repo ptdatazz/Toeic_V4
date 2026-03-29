@@ -3010,8 +3010,68 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
   const [viewAllModal, setViewAllModal] = useState(null); 
   const [wordDetailModal, setWordDetailModal] = useState(null); 
 
+  useEffect(() => {
+    if (!wordDetailModal) return;
+    const handleKey = (e) => {
+      const list = ([...(globalStats[activeTab]?.[wordDetailModal.listType] || [])]).sort((a, b) => {
+        const wa = (typeof a === 'string' ? a : a.word).toLowerCase();
+        const wb = (typeof b === 'string' ? b : b.word).toLowerCase();
+        return wa.localeCompare(wb);
+      });
+      const idx = list.findIndex(w => (typeof w === 'string' ? w : w.word).toLowerCase() === wordDetailModal.wordStr.toLowerCase());
+      const total = list.length;
+      if (e.key === "ArrowRight") {
+        const next = list[(idx + 1) % total];
+        openDetail(typeof next === 'string' ? next : next.word, wordDetailModal.listType);
+      }
+      if (e.key === "ArrowLeft") {
+        const prev = list[(idx - 1 + total) % total];
+        openDetail(typeof prev === 'string' ? prev : prev.word, wordDetailModal.listType);
+      }
+      if (e.key === "v" || e.key === "V") speakWord(wordDetailModal.wordStr, 'en-US');
+      if (e.key === "Escape") closeDetailModal();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [wordDetailModal]);
+
   const [isEditingManual, setIsEditingManual] = useState(false);
   const [manualInputs, setManualInputs] = useState({ phonetic: "", meaning: "", usage: "", synonym: "", structure: "" });
+
+
+  // --- TÍNH NĂNG MỚI: NHẬP JSON THỦ CÔNG TỪ AI NGOÀI ---
+  const [showJsonModal, setShowJsonModal] = useState(false);
+  const [jsonWordsInput, setJsonWordsInput] = useState("");
+  const [jsonPasteInput, setJsonPasteInput] = useState("");
+  const [jsonModalStep, setJsonModalStep] = useState(1);
+  const [jsonSaveStatus, setJsonSaveStatus] = useState("");
+
+  const getPromptForWords = (wordsStr, tab) => {
+    if (tab === "grammar") {
+      return `Giải thích các cấu trúc ngữ pháp sau: "${wordsStr}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "cấu trúc", "phonetic": "Công thức", "meaning": "Nghĩa", "usage": "Ví dụ"}]`;
+    }
+    return `Phân tích các từ/cụm từ tiếng Anh sau: "${wordsStr}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia được", "synonym": "tối đa 3 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}]`;
+  };
+
+  const handleSaveJson = async () => {
+    setJsonSaveStatus("đang xử lý...");
+    try {
+      let raw = jsonPasteInput.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
+      const match = raw.match(/\[[\s\S]*\]/);
+      if (!match) throw new Error("Không tìm thấy mảng JSON hợp lệ!");
+      const parsed = JSON.parse(match[0]);
+      if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("JSON rỗng hoặc sai định dạng!");
+      await onSaveWord(activeTab, parsed);
+      setJsonSaveStatus("✅ Lưu thành công " + parsed.length + " từ!");
+      setTimeout(() => {
+        setShowJsonModal(false);
+        setJsonWordsInput(""); setJsonPasteInput("");
+        setJsonModalStep(1); setJsonSaveStatus("");
+      }, 1500);
+    } catch (e) {
+      setJsonSaveStatus("❌ Lỗi: " + e.message);
+    }
+  };
 
   /// HÀM LÕI 1: GỌI AI DỊCH LẺ 1 TỪ (ĐÃ ÉP BẮT BUỘC TRẢ VỀ LOẠI TỪ)
   const fetchAI = async (wordInput, currentTab) => {
@@ -3206,7 +3266,6 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
   }
 
   const openDetail = (w, listType) => {
-      playSound("click");
       const dict = globalStats[activeTab]?.addedWordsObj || [];
       const foundDetail = [...dict].reverse().find(item => item.word.toLowerCase() === w.toLowerCase());
       setWordDetailModal({ wordStr: w, listType, detail: foundDetail || null });
@@ -3394,17 +3453,92 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
         <button onClick={() => setActiveTab("grammar")} style={{ flex: 1, padding: "10px 5px", borderRadius: "8px", border: "none", fontWeight: "bold", cursor: "pointer", transition: "0.2s", backgroundColor: activeTab === "grammar" ? "#2196F3" : "transparent", color: activeTab === "grammar" ? "white" : "#666" }}>Ngữ Pháp</button>
       </div>
 
-      <form onSubmit={handleAddNew} style={{ display: "flex", gap: "10px", marginBottom: "20px", animation: "popIn 0.3s ease-out" }} noValidate>
-        <input 
-           type="text" value={newWord} onChange={(e) => setNewWord(e.target.value)} disabled={isAdding}
-           placeholder={activeTab === "grammar" ? "Nhập cấu trúc (cách nhau bằng dấu phẩy)..." : "Nhập nhiều từ cách nhau bằng dấu phẩy (,)..."}
-           style={{ flex: 1, padding: "12px", borderRadius: "8px", border: "1px solid #ccc", outline: "none", fontSize: "16px", textTransform: activeTab === "grammar" ? "none" : "lowercase" }}
-           autoComplete="off" autoCorrect="off" spellCheck="false"
-        />
-        <button type="submit" disabled={!newWord.trim() || isAdding} style={{ padding: "0 20px", backgroundColor: newWord.trim() ? (isAdding ? "#9e9e9e" : "#FF9800") : "#ccc", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: newWord.trim() && !isAdding ? "pointer" : "not-allowed", fontSize: "15px", transition: "0.2s" }}>
-           {isAdding ? "🤖 Đang dịch..." : "➕ Thêm"}
-        </button>
-      </form>
+      <form onSubmit={handleAddNew} style={{ display: "flex", gap: "8px", marginBottom: "10px", animation: "popIn 0.3s ease-out" }} noValidate>
+      <input 
+        type="text" value={newWord} onChange={(e) => setNewWord(e.target.value)} disabled={isAdding}
+        placeholder={activeTab === "grammar" ? "Nhập cấu trúc (cách nhau bằng dấu phẩy)..." : "Nhập nhiều từ cách nhau bằng dấu phẩy (,)..."}
+        style={{ flex: 1, padding: "12px", borderRadius: "8px", border: "1px solid #ccc", outline: "none", fontSize: "16px", textTransform: activeTab === "grammar" ? "none" : "lowercase" }}
+        autoComplete="off" autoCorrect="off" spellCheck="false"
+      />
+      <button type="submit" disabled={!newWord.trim() || isAdding} style={{ padding: "0 16px", backgroundColor: newWord.trim() ? (isAdding ? "#9e9e9e" : "#FF9800") : "#ccc", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: newWord.trim() && !isAdding ? "pointer" : "not-allowed", fontSize: "15px" }}>
+        {isAdding ? "🤖..." : "➕ Thêm"}
+      </button>
+    </form>
+
+    {/* NÚT MỞ MODAL JSON */}
+    <button
+      onClick={() => { playSound("click"); setShowJsonModal(true); setJsonModalStep(1); setJsonWordsInput(""); setJsonPasteInput(""); setJsonSaveStatus(""); }}
+      style={{ width: "100%", padding: "10px", marginBottom: "20px", backgroundColor: "#e8f5e9", color: "#2e7d32", border: "1px dashed #4CAF50", borderRadius: "8px", fontWeight: "bold", cursor: "pointer", fontSize: "14px" }}
+    >
+      📋 Nhập từ bằng AI bên ngoài (ChatGPT, Gemini...)
+    </button>
+
+    {/* MODAL 3 BƯỚC */}
+    {showJsonModal && (
+      <div onClick={() => setShowJsonModal(false)} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.6)", zIndex: 1200, display: "flex", justifyContent: "center", alignItems: "center", padding: "16px", boxSizing: "border-box" }}>
+        <div onClick={e => e.stopPropagation()} style={{ backgroundColor: "white", width: "100%", maxWidth: "440px", borderRadius: "16px", padding: "22px", animation: "popIn 0.3s", boxShadow: "0 10px 30px rgba(0,0,0,0.3)", maxHeight: "90vh", overflowY: "auto" }}>
+          
+          <h3 style={{ margin: "0 0 6px 0", color: "#2c3e50" }}>📋 Nhập từ bằng AI ngoài</h3>
+          <p style={{ margin: "0 0 14px 0", fontSize: "13px", color: "#888" }}>Dùng khi API key hết quota</p>
+
+          {/* THANH BƯỚC */}
+          <div style={{ display: "flex", gap: "6px", marginBottom: "18px" }}>
+            {[1,2,3].map(s => <div key={s} style={{ flex: 1, height: "4px", borderRadius: "2px", backgroundColor: jsonModalStep >= s ? "#4CAF50" : "#e0e0e0", transition: "0.3s" }} />)}
+          </div>
+
+          {jsonModalStep === 1 && (
+            <>
+              <p style={{ fontWeight: "bold", color: "#333", marginBottom: "8px" }}>Bước 1: Nhập danh sách từ</p>
+              <textarea value={jsonWordsInput} onChange={e => setJsonWordsInput(e.target.value)}
+                placeholder={"apply, absorb, accurate, achieve"} rows={4}
+                style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #ccc", fontSize: "15px", boxSizing: "border-box", resize: "vertical", outline: "none", fontFamily: "inherit" }}
+              />
+              <button disabled={!jsonWordsInput.trim()} onClick={() => { playSound("click"); setJsonModalStep(2); }}
+                style={{ width: "100%", marginTop: "12px", padding: "12px", backgroundColor: jsonWordsInput.trim() ? "#4CAF50" : "#ccc", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: jsonWordsInput.trim() ? "pointer" : "not-allowed" }}>
+                Tiếp theo →
+              </button>
+            </>
+          )}
+
+          {jsonModalStep === 2 && (
+            <>
+              <p style={{ fontWeight: "bold", color: "#333", marginBottom: "8px" }}>Bước 2: Copy prompt → paste vào AI</p>
+              <textarea readOnly value={getPromptForWords(jsonWordsInput.trim(), activeTab)} rows={8}
+                style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #90caf9", fontSize: "13px", boxSizing: "border-box", backgroundColor: "#f0f8ff", fontFamily: "monospace", resize: "none", outline: "none", color: "#1565c0" }}
+              />
+              <button onClick={() => { navigator.clipboard.writeText(getPromptForWords(jsonWordsInput.trim(), activeTab)); playSound("click"); alert("✅ Đã copy! Mở ChatGPT/Gemini/Claude → paste → gửi → copy JSON về."); }}
+                style={{ width: "100%", marginTop: "10px", padding: "12px", backgroundColor: "#2196F3", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
+                📋 Copy Prompt
+              </button>
+              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                <button onClick={() => setJsonModalStep(1)} style={{ flex: 1, padding: "10px", backgroundColor: "#e0e0e0", color: "#333", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>← Quay lại</button>
+                <button onClick={() => { playSound("click"); setJsonModalStep(3); }} style={{ flex: 2, padding: "10px", backgroundColor: "#FF9800", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>Đã có JSON →</button>
+              </div>
+            </>
+          )}
+
+          {jsonModalStep === 3 && (
+            <>
+              <p style={{ fontWeight: "bold", color: "#333", marginBottom: "8px" }}>Bước 3: Paste JSON từ AI vào đây</p>
+              <textarea value={jsonPasteInput} onChange={e => { setJsonPasteInput(e.target.value); setJsonSaveStatus(""); }}
+                placeholder={'[\n  {"word": "apply (v)", "meaning": "áp dụng", ...}\n]'} rows={8}
+                style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #ccc", fontSize: "13px", boxSizing: "border-box", fontFamily: "monospace", resize: "vertical", outline: "none" }}
+              />
+              {jsonSaveStatus && <p style={{ margin: "8px 0 0 0", fontWeight: "bold", color: jsonSaveStatus.startsWith("✅") ? "#4CAF50" : "#f44336" }}>{jsonSaveStatus}</p>}
+              <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
+                <button onClick={() => setJsonModalStep(2)} style={{ flex: 1, padding: "10px", backgroundColor: "#e0e0e0", color: "#333", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>← Quay lại</button>
+                <button disabled={!jsonPasteInput.trim()} onClick={handleSaveJson}
+                  style={{ flex: 2, padding: "10px", backgroundColor: jsonPasteInput.trim() ? "#4CAF50" : "#ccc", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: jsonPasteInput.trim() ? "pointer" : "not-allowed" }}>
+                  💾 Lưu vào Sổ Tay
+                </button>
+              </div>
+            </>
+          )}
+
+          <button onClick={() => setShowJsonModal(false)} style={{ width: "100%", marginTop: "12px", padding: "10px", backgroundColor: "#f5f5f5", color: "#666", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold" }}>✕ Đóng</button>
+        </div>
+      </div>
+    )}
 
       <div style={{ animation: "popIn 0.3s ease-out" }}>
         {renderListLogic(globalStats, activeTab, renderWordList)}
@@ -3443,14 +3577,19 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
 
       {/* 2. OVERLAY MODAL: XEM CHI TIẾT TỪ & CẬP NHẬT/SỬA HÈN */}
      {wordDetailModal && (() => {
-        const currentList = globalStats[activeTab]?.[wordDetailModal.listType] || [];
+        const currentList = ([...(globalStats[activeTab]?.[wordDetailModal.listType] || [])]).sort((a, b) => {
+            const wa = (typeof a === 'string' ? a : a.word).toLowerCase();
+            const wb = (typeof b === 'string' ? b : b.word).toLowerCase();
+            return wa.localeCompare(wb);
+        }); 
         const currentIdx = currentList.findIndex(w => (typeof w === "string" ? w : w.word).toLowerCase() === wordDetailModal.wordStr.toLowerCase());
         const goTo = (offset) => {
-          const newIdx = currentIdx + offset;
-          if (newIdx < 0 || newIdx >= currentList.length) return;
+          const total = currentList.length;
+          const newIdx = (currentIdx + offset + total) % total; // vòng lặp
           const newWord = typeof currentList[newIdx] === "string" ? currentList[newIdx] : currentList[newIdx].word;
           openDetail(newWord, wordDetailModal.listType);
         };
+
         return (
         <div onClick={closeDetailModal} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.7)", zIndex: 1100, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px", boxSizing: "border-box", cursor: "pointer" }}>
             <div style={{ width: "100%", maxWidth: "430px" }} onClick={(e) => e.stopPropagation()}>
@@ -3510,6 +3649,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                                         {activeTab !== "grammar" && (
                                             <button
                                                 onClick={() => speakWord(wordDetailModal.wordStr, 'en-US')}
+                                                onKeyDown={(e) => { if (e.key === "v" || e.key === "V") speakWord(wordDetailModal.wordStr, 'en-US'); }}
                                                 style={{ background: "none", border: "none", cursor: "pointer", fontSize: "18px", padding: "2px 6px", borderRadius: "50%", backgroundColor: "#e3f2fd", lineHeight: 1 }}
                                             >
                                                 🔊
