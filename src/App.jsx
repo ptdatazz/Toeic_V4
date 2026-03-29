@@ -68,6 +68,16 @@ const speakWord = (rawText, lang = 'en-US') => {
 // --- CÁC HÀM HỖ TRỢ CHUNG ---
 const shuffleArray = (array) => [...array].sort(() => Math.random() - 0.5);
 
+const getMeaning = (item) => {
+  if (item.meaning && item.meaning.trim()) return item.meaning.trim();
+  const parts = [
+    item.noun_meaning && `(n) ${item.noun_meaning}`,
+    item.verb_meaning && `(v) ${item.verb_meaning}`,
+    item.adj_meaning && `(adj) ${item.adj_meaning}`,
+  ].filter(Boolean);
+  return parts.join(" / ") || "";
+};
+
 const getRandomWrongOptions = (fullData, currentItem, fieldToGet) => {
   const wrongOptions = [];
   let attempts = 0; 
@@ -106,13 +116,19 @@ const generateVocabQuestions = (selectedData, fullData, level) => {
 
     }
 
-    let questionObj = { ...item, type: qType };
+    // SAU
+    const itemMeaning = getMeaning(item);
+    let questionObj = { ...item, type: qType, meaning: itemMeaning };
 
     if (qType === "en_to_vn" || qType === "listening") {
-      const wrongOptions = getRandomWrongOptions(fullData, item, "meaning");
-      questionObj.options = shuffleArray([...wrongOptions, item.meaning]);
-      questionObj.answer = item.meaning;
-    } else if (qType === "vn_to_en"|| qType === "part5_vocab") {
+      const wrongOptions = fullData
+        .filter(d => getMeaning(d) !== itemMeaning && getMeaning(d))
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 3)
+        .map(d => getMeaning(d));
+      questionObj.options = shuffleArray([...wrongOptions, itemMeaning]);
+      questionObj.answer = itemMeaning;
+    } else if (qType === "vn_to_en" || qType === "part5_vocab") {
       const wrongOptions = getRandomWrongOptions(fullData, item, "word");
       questionObj.options = shuffleArray([...wrongOptions, item.word]);
       questionObj.answer = item.word;
@@ -1660,7 +1676,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
         </>
       )}
 
-      {currentQ.type === "vn_to_en" && (
+      {(currentQ.type === "vn_to_en" || currentQ.type === "part5_vocab") && (
         <>
           <h2 style={{ fontSize: "22px", color: "#2c3e50", lineHeight: "1.4" }}>Từ nào có nghĩa là <span style={{color: mode==="collocation"?"#9C27B0":"#2196F3"}}>"{currentQ.meaning}"</span>?</h2>
           <div className="options" style={{ marginTop: "20px" }}>
