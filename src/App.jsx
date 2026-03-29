@@ -204,7 +204,7 @@ function AuthScreen() {
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "15px", backgroundColor: "#f9f9f9", padding: "30px", borderRadius: "12px", boxShadow: "0 4px 10px rgba(0,0,0,0.1)" }}>
         <h2 style={{ margin: "0 0 15px 0", color: "#333" }}>{isLoginMode ? "Đăng Nhập" : "Tạo Tài Khoản"}</h2>
         {error && <div style={{ color: "red", backgroundColor: "#ffebee", padding: "10px", borderRadius: "5px", fontSize: "14px" }}>{error}</div>}
-        <input type="email" placeholder="Nhập Email của bạn" value={email} onChange={(e) => setEmail(e.target.value)} style={{ padding: "12px", borderRadius: "8px", border: "1px solid #ccc", fontSize: "16px" }} />
+        <input type="text" placeholder="Nhập Email của bạn" value={email} onChange={(e) => setEmail(e.target.value)} style={{ padding: "12px", borderRadius: "8px", border: "1px solid #ccc", fontSize: "16px" }} />
         <input type="password" placeholder="Mật khẩu (ít nhất 6 ký tự)" value={password} onChange={(e) => setPassword(e.target.value)} style={{ padding: "12px", borderRadius: "8px", border: "1px solid #ccc", fontSize: "16px" }} />
         <button type="submit" disabled={loading} style={{ padding: "12px", fontSize: "18px", backgroundColor: loading ? "#9e9e9e" : "#4CAF50", color: "white", borderRadius: "8px", border: "none", cursor: loading ? "not-allowed" : "pointer", fontWeight: "bold", marginTop: "10px" }}>
           {loading ? "Đang xử lý..." : (isLoginMode ? "Vào Học Ngay" : "Đăng Ký")}
@@ -1401,7 +1401,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                  <input
                                      ref={(el) => bossInputRefs.current[idx] = el} 
-                                     type="email"
+                                     type="text"
                                      value={crosswordInputs[idx] || ""}
                                      onChange={(e) => {
                                          const val = e.target.value.replace(/[^a-zA-Z\s-]/g, '');
@@ -1473,7 +1473,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
                  <h3 style={{ color: "#FF9800", marginBottom: "15px", fontSize: "18px" }}>Nhập Từ Khóa Bí Mật:</h3>
                  <input 
                     autoFocus // TÍNH NĂNG MỚI: Tự động hút con trỏ chuột vào đây khi vừa xuất hiện
-                    type="email"
+                    type="text"
                     value={keywordInput}
                     onChange={(e) => {
                         const val = e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase();
@@ -1623,7 +1623,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
                         noValidate
                     >
                         <input
-                            ref={typingInputRef} type="email" value={typingValue} onChange={(e) => setTypingValue(e.target.value)}
+                            ref={typingInputRef} type="text" value={typingValue} onChange={(e) => setTypingValue(e.target.value)}
                             placeholder="Nhập tiếng Anh..."
                             style={{ width: "100%", padding: "15px", fontSize: "20px", textAlign: "center", borderRadius: "8px", border: "2px solid #ccc", outline: "none", textTransform: "lowercase", marginBottom: "15px" }}
                             autoComplete="off" autoCorrect="off" spellCheck="false"
@@ -1674,9 +1674,9 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
       {currentQ.type === "typing" && (
         <>
           <h2 style={{ fontSize: "22px", color: "#2c3e50", lineHeight: "1.4" }}>Gõ từ có nghĩa là <span style={{color: "#9C27B0"}}>"{currentQ.meaning}"</span></h2>
-          {/* THÊM noValidate vào form và đổi type="email" để hack chặn Unikey */}
+          {/* THÊM noValidate vào form và đổi type="text" để hack chặn Unikey */}
           <form onSubmit={handleTypingSubmit} style={{ marginTop: "20px" }} noValidate>
-            <input ref={typingInputRef} type="email" value={typingValue} onChange={(e) => setTypingValue(e.target.value)} disabled={selected !== null} placeholder="Nhập vào đây..." style={{ width: "100%", padding: "15px", fontSize: "20px", textAlign: "center", borderRadius: "8px", border: "2px solid #ccc", outline: "none", textTransform: "lowercase" }} autoComplete="off" autoCorrect="off" spellCheck="false" />
+            <input ref={typingInputRef} type="text" value={typingValue} onChange={(e) => setTypingValue(e.target.value)} disabled={selected !== null} placeholder="Nhập vào đây..." style={{ width: "100%", padding: "15px", fontSize: "20px", textAlign: "center", borderRadius: "8px", border: "2px solid #ccc", outline: "none", textTransform: "lowercase" }} autoComplete="off" autoCorrect="off" spellCheck="false" />
             {selected === null && (
               <button type="submit" style={{ width: "100%", padding: "12px", marginTop: "15px", fontSize: "18px", backgroundColor: "#2196F3", color: "white", borderRadius: "8px", border: "none", cursor: typingValue.trim() ? "pointer" : "not-allowed", opacity: typingValue.trim() ? 1 : 0.5 }}>Kiểm tra</button>
             )}
@@ -2121,7 +2121,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
       // Part 5: cấu trúc cũ - mảng câu hỏi thẳng
       // Part 6/7/scan_skim: cấu trúc mới - mảng đoạn văn, mỗi đoạn có nhiều câu
       const isPassageMode = ["part6", "part7", "scan_skim"].includes(TOEIC_PART);
-      const PASSAGE_TYPES = ["email", "thông báo nội bộ", "quảng cáo sản phẩm/dịch vụ", "bài báo kinh doanh", "thư mời", "hướng dẫn sử dụng", "thông cáo báo chí", "lịch trình công tác"];
+      const PASSAGE_TYPES = ["text", "thông báo nội bộ", "quảng cáo sản phẩm/dịch vụ", "bài báo kinh doanh", "thư mời", "hướng dẫn sử dụng", "thông cáo báo chí", "lịch trình công tác"];
       // Part6: cố định 4 lỗ/đoạn, 1 đoạn
       // Part7: random 4 hoặc 5 câu/đoạn, 1 đoạn
       const questionsPerPassage = TOEIC_PART === "part6" ? 4
@@ -2183,7 +2183,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
 
             Cấu trúc mỗi đoạn:
             {
-              "doc_type": "email",
+              "doc_type": "text",
               "passage": "Toàn bộ đoạn văn ở đây (với ___1___ nếu là Part 6)",
               "questions": [
                 {
