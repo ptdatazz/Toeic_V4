@@ -1479,8 +1479,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
                         const val = e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase();
                         setKeywordInput(val);
                         // Ngay khi gõ đúng từ khóa
-                        if (val === currentQ.keyword && !isKeywordSolved) {
-                            setIsKeywordSolved(true);
+                        if (val === currentQ.keyword.toUpperCase() && !isKeywordSolved) {                            setIsKeywordSolved(true);
                             playSound("combo_max");
                             confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, zIndex: 9999 });
                             // ĐÃ XÓA LỆNH GỌI AI Ở ĐÂY VÌ AI ĐÃ CHUẨN BỊ XONG TỪ TRƯỚC RỒI!
@@ -2561,13 +2560,12 @@ const formatExplanation = (explanation) => {
       { key: 'wrong_options',  icon: '❌', label: 'Các đáp án sai',         bgColor: '#fff3e0', borderColor: '#ffa726', labelColor: '#e65100', isPlain: false },
       { key: 'key_vocab',      icon: '📚', label: 'Từ vựng quan trọng',     bgColor: '#fce4ec', borderColor: '#ec407a', labelColor: '#880e4f', isPlain: false },
     ];
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-        {sections.map(({ key, icon, label, bgColor, borderColor, labelColor, isPlain }) => {
-          const content = explanation[key];
-          if (!content) return null;
-          return (
-            <div key={key} style={{ backgroundColor: bgColor, border: `1px solid ${borderColor}`, borderRadius: "10px", padding: "12px 15px" }}>
+  return (
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.75fr) auto", gap: "8px 6px", width: "100%", alignItems: "center" }}>
+          {displayWords.map(word => {
+              const wordStr = typeof word === 'string' ? word : word.word;
+              return (
+                <React.Fragment key={wordStr}>
               <div style={{ fontWeight: "bold", color: labelColor, fontSize: "13px", marginBottom: "8px", display: "flex", alignItems: "center", gap: "5px" }}>
                 <span>{icon}</span> {label}
               </div>
@@ -2575,9 +2573,9 @@ const formatExplanation = (explanation) => {
                 ? <p style={{ margin: 0, fontSize: "15px", lineHeight: "1.7", color: "#2c3e50" }}>{renderInlineText(content)}</p>
                 : renderBulletList(content, borderColor)
               }
-            </div>
-          );
-        })}
+            </React.Fragment>
+              )
+          })}
       </div>
     );
   }
@@ -3216,11 +3214,11 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
     const displayWords = limit ? sorted.slice(0, limit) : sorted;
     
     return (
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
               {displayWords.map(word => {
                   const wordStr = typeof word === 'string' ? word : word.word;
                   return (
-                      <div key={wordStr} style={{ position: "relative", display: "inline-flex", alignItems: "center", textTransform: "none" }}>
+                      <div key={wordStr} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", textTransform: "none", width: "100%", boxSizing: "border-box" }}>
                           
                           {/* 1. Phần Bấm vào Chữ để mở Modal */}
                           <span
@@ -3268,7 +3266,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                                 }
                             }}
                               style={{
-                                  padding: "6px 36px 6px 12px", borderRadius: "20px", fontSize: "14px",
+                                  padding: "6px 12px", borderRadius: "20px", fontSize: "14px", wordBreak: "break-word", textAlign: "center", flex: "0 1 70%", minWidth: 0,
                                   backgroundColor: selectedToDelete.has(wordStr) ? "#ffebee" : bgColor,
                                   color: selectedToDelete.has(wordStr) ? "#f44336" : color,
                                   fontWeight: "500", cursor: "pointer",
@@ -3280,7 +3278,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                           </span>
                           
                           {/* 2. Cụm Nút Bấm Chức Năng (V và X) */}
-                          <div style={{ position: "absolute", top: "-5px", right: "-8px", display: "flex", gap: "2px" }}>
+                          <div style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
                               
                               {/* NÚT V (Hiện ở cả Ô Đỏ và Ô Vàng) */}
                               {(listType === "wrongWords" || listType === "savedWords") && (
@@ -3420,8 +3418,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
               {/* {selectedToDelete.size === 0 && <p style={{ fontSize: "12px", color: "#aaa", margin: "0 0 8px 0" }}>💡 Giữ Ctrl + click để chọn nhiều từ xóa cùng lúc</p>} */}
               </div>
               {selectedToDelete.size === 0 && <p style={{ fontSize: "12px", color: "#aaa", margin: "0 0 10px 0" }}>💡 PC: Giữ Ctrl + click · Mobile: Nhấn giữ để chọn nhiều từ</p>}
-                <div style={{ overflowY: "auto", flex: 1, padding: "10px 0" }}>
-                   {renderTags(globalStats[activeTab][viewAllModal.listType] || [], viewAllModal.color, viewAllModal.bgColor, viewAllModal.listType, null)}
+                <div style={{ overflowY: "auto", overflowX: "hidden", flex: 1, padding: "10px 0", paddingRight: "4px" }}>                   {renderTags(globalStats[activeTab][viewAllModal.listType] || [], viewAllModal.color, viewAllModal.bgColor, viewAllModal.listType, null)}
                 </div>
                 <button onClick={() => { playSound("click"); setSelectedToDelete(new Set()); setViewAllModal(null); }} style={{ width: "100%", padding: "12px", marginTop: "15px", fontSize: "16px", backgroundColor: "#e0e0e0", color: "#333", borderRadius: "8px", border: "none", cursor: "pointer", fontWeight: "bold" }}>Đóng</button>
             </div>
