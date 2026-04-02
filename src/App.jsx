@@ -1941,7 +1941,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
                                   const flashModel = textModels.find(m => m.name.includes("flash"));
                                   window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
                               }
-                              const prompt = `Phân tích từ/cụm từ tiếng Anh: "${cleanWord}". Trả về CHỈ 1 OBJECT JSON: {"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia được", "synonym": "tối đa 3 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}`;
+                              const prompt = `Phân tích từ/cụm từ tiếng Anh: "${cleanWord}". Trả về CHỈ 1 OBJECT JSON: {"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia được", "synonym": "tối thiểu 3 từ đồng nghĩa và tối đa là 7 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}`;
                               const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${getActiveKey()}`, {
                                   method: "POST", headers: { "Content-Type": "application/json" },
                                   body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
@@ -2999,8 +2999,7 @@ function ModeSelectionScreen({ onModeSelect, onNotebookClick }) {
 // =======================================================================
 // COMPONENT: SỔ TAY TÍCH HỢP AI + SỬA BẰNG TAY (MANUAL EDIT) XỊN SÒ
 // =======================================================================
-function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveWord }) {
-  const [activeTab, setActiveTab] = useState("vocab");
+function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveWord, onMoveManyWords, onRemoveManyWords }) {  const [activeTab, setActiveTab] = useState("vocab");
   const [newWord, setNewWord] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [selectedToDelete, setSelectedToDelete] = useState(new Set());
@@ -3050,7 +3049,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
     if (tab === "grammar") {
       return `Giải thích các cấu trúc ngữ pháp sau: "${wordsStr}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "cấu trúc", "phonetic": "Công thức", "meaning": "Nghĩa", "usage": "Ví dụ"}]`;
     }
-    return `Phân tích các từ/cụm từ tiếng Anh sau: "${wordsStr}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia được", "synonym": "tối đa 3 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}]`;
+    return `Phân tích các từ/cụm từ tiếng Anh sau: "${wordsStr}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia được", "synonym": "tối thiểu 3 từ đồng nghĩa và tối đa là 7 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}]`;
   };
 
   const handleSaveJson = async () => {
@@ -3100,7 +3099,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
 
       let prompt = currentTab === "grammar" 
         ? `Giải thích cấu trúc ngữ pháp: "${wordInput}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON:\n{"word": "${wordInput}", "phonetic": "Công thức/cấu trúc", "meaning": "Cách dùng cốt lõi", "usage": "1 ví dụ"}`
-        : `Phân tích từ/cụm từ tiếng Anh: "${wordInput}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON, KHÔNG giải thích thêm:\n{"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia loại từ được", "synonym": "tối đa 3 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}`;
+        : `Phân tích từ/cụm từ tiếng Anh: "${wordInput}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON, KHÔNG giải thích thêm:\n{"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia loại từ được", "synonym": "tối thiểu 3 từ đồng nghĩa và tối đa là 7 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}`;
 
       const requestBody = { contents: [{ parts: [{ text: prompt }] }] };
       if (window.globalCachedModel.includes("1.5")) {
@@ -3156,7 +3155,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
 
       let prompt = currentTab === "grammar"
         ? `Giải thích các cấu trúc ngữ pháp sau: "${wordsString}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "cấu trúc", "phonetic": "Công thức", "meaning": "Nghĩa", "usage": "Ví dụ"}]`
-        : `Phân tích các từ/cụm từ tiếng Anh sau: "${wordsString}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ", "synonym": "tối đa 3 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}]`;
+        : `Phân tích các từ/cụm từ tiếng Anh sau: "${wordsString}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ", "synonym": "tối thiểu 3 từ đồng nghĩa và tối đa là 7 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}]`;
 
       const requestBody = { contents: [{ parts: [{ text: prompt }] }] };
       if (window.globalCachedModel.includes("1.5")) {
@@ -3279,7 +3278,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
   }
 
   // --- ĐÃ NÂNG CẤP: THÊM NÚT "V" CHO CẢ Ô VÀNG VÀ Ô ĐỎ ---
-  const renderTags = (wordsArray, color, bgColor, listType, limit = null) => {
+  const renderTags = (wordsArray, color, bgColor, listType, limit = null, isModal = false) => {
     if (!wordsArray || wordsArray.length === 0) return <p style={{ color: "#aaa", fontSize: "14px", fontStyle: "italic", margin: 0 }}>Chưa có từ nào.</p>;
     const sorted = [...wordsArray].sort((a, b) => {
         const wa = (typeof a === 'string' ? a : a.word).toLowerCase();
@@ -3297,11 +3296,12 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                           
                           {/* 1. Phần Bấm vào Chữ để mở Modal */}
                           <span
-                            onTouchStart={(e) => {
-                                let isLongPress = false;
-                                const timer = setTimeout(() => {
-                                    isLongPress = true;
-                                    setSelectedToDelete(prev => {
+                           onTouchStart={(e) => {
+                                    if (!isModal) return;
+                                    let isLongPress = false;
+                                    const timer = setTimeout(() => {
+                                        isLongPress = true;
+                                        setSelectedToDelete(prev => {
                                         const next = new Set(prev);
                                         next.has(wordStr) ? next.delete(wordStr) : next.add(wordStr);
                                         return next;
@@ -3312,9 +3312,10 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                                 e.currentTarget._longPressTimer2 = () => isLongPress;
                             }}
                             onTouchEnd={(e) => {
-                                clearTimeout(e.currentTarget._longPressTimer);
-                                const wasLongPress = e.currentTarget._longPressTimer2?.();
-                                if (wasLongPress) {
+                                  if (!isModal) return;
+                                  clearTimeout(e.currentTarget._longPressTimer);
+                                  const wasLongPress = e.currentTarget._longPressTimer2?.();
+                                  if (wasLongPress) {
                                     e.preventDefault(); // Chặn click sau long press, KHÔNG toggle lại
                                     return;
                                 }
@@ -3329,17 +3330,17 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                                 }
                             }}
                             onClick={(e) => {
-                                if (e.ctrlKey || e.metaKey) {
-                                    e.stopPropagation();
-                                    setSelectedToDelete(prev => {
-                                        const next = new Set(prev);
-                                        next.has(wordStr) ? next.delete(wordStr) : next.add(wordStr);
-                                        return next;
-                                    });
-                                } else if (selectedToDelete.size === 0) {
-                                    openDetail(wordStr, listType);
-                                }
-                            }}
+                                  if (isModal && (e.ctrlKey || e.metaKey)) {
+                                      e.stopPropagation();
+                                      setSelectedToDelete(prev => {
+                                          const next = new Set(prev);
+                                          next.has(wordStr) ? next.delete(wordStr) : next.add(wordStr);
+                                          return next;
+                                      });
+                                  } else if (selectedToDelete.size === 0) {
+                                      openDetail(wordStr, listType);
+                                  }
+                              }}
                               style={{
                                   padding: "6px 12px", borderRadius: "20px", fontSize: "14px", wordBreak: "break-word", textAlign: "center", flex: "0 1 70%", minWidth: 0,
                                   backgroundColor: selectedToDelete.has(wordStr) ? "#ffebee" : bgColor,
@@ -3551,24 +3552,42 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
         <div onClick={() => { playSound("click"); setSelectedToDelete(new Set()); setViewAllModal(null); }} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px", boxSizing: "border-box", cursor: "pointer" }}>
             <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: "white", width: "100%", maxWidth: "400px", borderRadius: "15px", padding: "20px", maxHeight: "80vh", display: "flex", flexDirection: "column", animation: "popIn 0.3s", boxShadow: "0 10px 30px rgba(0,0,0,0.2)", cursor: "default" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "10px" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "8px" }}>
-                  <h3 style={{ color: viewAllModal.color, margin: 0 }}>
-                      {viewAllModal.title} ({(globalStats[activeTab][viewAllModal.listType] || []).length})
-                  </h3>
-                  {selectedToDelete.size > 0 && (
-                      <button onClick={() => {
-                          if (!window.confirm(`Xóa ${selectedToDelete.size} từ đã chọn?`)) return;
-                          selectedToDelete.forEach(w => onRemoveWord(activeTab, viewAllModal.listType, w));
-                          setSelectedToDelete(new Set());
-                      }} style={{ padding: "6px 14px", backgroundColor: "#f44336", color: "white", border: "none", borderRadius: "20px", fontWeight: "bold", cursor: "pointer", fontSize: "13px" }}>
-                          🗑️ Xóa {selectedToDelete.size} từ
-                      </button>
-                  )}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "8px", width: "100%" }}>
+                    <h3 style={{ color: viewAllModal.color, margin: 0 }}>
+                        {viewAllModal.title} ({(globalStats[activeTab][viewAllModal.listType] || []).length})
+                    </h3>
+                    <div style={{ minWidth: "80px", display: "flex", justifyContent: "flex-end" }}>
+                    {selectedToDelete.size > 0 && (
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                        <span style={{ fontSize: "12px", color: "#999", whiteSpace: "nowrap" }}>{selectedToDelete.size} từ</span>
+                        {viewAllModal.listType !== "masteredWords" && (
+                            <button
+                                title="Đánh dấu là đã thuộc"
+                                onClick={() => {
+                                    if (!window.confirm(`Đánh dấu ${selectedToDelete.size} từ là ĐÃ THUỘC?`)) return;
+                                    onMoveManyWords(activeTab, viewAllModal.listType, "masteredWords", [...selectedToDelete]);
+                                    setSelectedToDelete(new Set());
+                                }}
+                                style={{ width: "34px", height: "34px", borderRadius: "50%", backgroundColor: "#4CAF50", color: "white", border: "none", fontSize: "16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(76,175,80,0.4)", flexShrink: 0 }}
+                            >✅</button>
+                        )}
+                        <button
+                            title="Xóa vĩnh viễn"
+                            onClick={() => {
+                                if (!window.confirm(`Xóa vĩnh viễn ${selectedToDelete.size} từ đã chọn?`)) return;
+                                onRemoveManyWords(activeTab, viewAllModal.listType, [...selectedToDelete]);
+                                setSelectedToDelete(new Set());
+                            }}
+                            style={{ width: "34px", height: "34px", borderRadius: "50%", backgroundColor: "#f44336", color: "white", border: "none", fontSize: "16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(244,67,54,0.4)", flexShrink: 0 }}
+                        >❌</button>
+                    </div>
+                )}
+                </div>
               </div>
               {/* {selectedToDelete.size === 0 && <p style={{ fontSize: "12px", color: "#aaa", margin: "0 0 8px 0" }}>💡 Giữ Ctrl + click để chọn nhiều từ xóa cùng lúc</p>} */}
               </div>
               {selectedToDelete.size === 0 && <p style={{ fontSize: "12px", color: "#aaa", margin: "0 0 10px 0" }}>💡 PC: Giữ Ctrl + click · Mobile: Nhấn giữ để chọn nhiều từ</p>}
-                <div style={{ overflowY: "auto", overflowX: "hidden", flex: 1, padding: "10px 0", paddingRight: "4px" }}>                   {renderTags(globalStats[activeTab][viewAllModal.listType] || [], viewAllModal.color, viewAllModal.bgColor, viewAllModal.listType, null)}
+                <div style={{ overflowY: "auto", overflowX: "hidden", flex: 1, padding: "10px 0", paddingRight: "4px" }}>                   {renderTags(globalStats[activeTab][viewAllModal.listType] || [], viewAllModal.color, viewAllModal.bgColor, viewAllModal.listType, null, true)}
                 </div>
                 <button onClick={() => { playSound("click"); setSelectedToDelete(new Set()); setViewAllModal(null); }} style={{ width: "100%", padding: "12px", marginTop: "15px", fontSize: "16px", backgroundColor: "#e0e0e0", color: "#333", borderRadius: "8px", border: "none", cursor: "pointer", fontWeight: "bold" }}>Đóng</button>
             </div>
@@ -4355,6 +4374,63 @@ function App() {
     } catch(e) { console.error("Lỗi xóa từ:", e); }
   };
 
+
+  const handleMoveManyWords = async (type, fromList, toList, wordsArray) => {
+    if (!currentUser || !wordsArray || wordsArray.length === 0) return;
+    playSound("click");
+    const normalizeWord = (w) => w ? w.toLowerCase().replace(/\s*\(.*?\)\s*/g, '').trim() : "";
+    const normSet = new Set(wordsArray.map(w => normalizeWord(w)));
+    try {
+        const currentState = globalStats[type] || {};
+        let cleanSaved = (currentState.savedWords || []).filter(w => !normSet.has(normalizeWord(w)));
+        let cleanWrong = (currentState.wrongWords || []).filter(w => !normSet.has(normalizeWord(w)));
+        let cleanMastered = (currentState.masteredWords || []).filter(w => !normSet.has(normalizeWord(w)));
+
+        if (toList === "savedWords") cleanSaved = [...cleanSaved, ...wordsArray];
+        if (toList === "wrongWords") cleanWrong = [...cleanWrong, ...wordsArray];
+        if (toList === "masteredWords") {
+            cleanMastered = [...cleanMastered, ...wordsArray];
+            const alreadyMasteredNorms = new Set((currentState.masteredWords || []).map(w => normalizeWord(w)));
+            const newlyMasteredCount = wordsArray.filter(w => !alreadyMasteredNorms.has(normalizeWord(w))).length;
+            if (newlyMasteredCount > 0) {
+                setTodayMasteredCount(prev => {
+                    const newVal = prev + newlyMasteredCount;
+                    localStorage.setItem("toeic_today_mastered", newVal.toString());
+                    return newVal;
+                });
+            }
+        }
+        await updateDoc(doc(db, "users", currentUser.uid), {
+            [`${type}.savedWords`]: cleanSaved,
+            [`${type}.wrongWords`]: cleanWrong,
+            [`${type}.masteredWords`]: cleanMastered
+        });
+        setGlobalStats(prev => {
+            const newState = { ...prev };
+            newState[type] = { ...newState[type], savedWords: cleanSaved, wrongWords: cleanWrong, masteredWords: cleanMastered };
+            return newState;
+        });
+    } catch (error) { console.error("Lỗi di chuyển nhiều từ:", error); }
+};
+
+const handleRemoveManyWords = async (type, listType, wordsArray) => {
+    if (!currentUser || !wordsArray || wordsArray.length === 0) return;
+    try {
+        playSound("click");
+        const normalizeWord = (w) => w ? w.toLowerCase().replace(/\s*\(.*?\)\s*/g, '').trim() : "";
+        const normSet = new Set(wordsArray.map(w => normalizeWord(w)));
+        const cleanList = (globalStats[type][listType] || []).filter(w => !normSet.has(normalizeWord(w)));
+        await updateDoc(doc(db, "users", currentUser.uid), {
+            [`${type}.${listType}`]: cleanList
+        });
+        setGlobalStats(prev => {
+            const newState = { ...prev };
+            newState[type] = { ...newState[type], [listType]: cleanList };
+            return newState;
+        });
+    } catch(e) { console.error("Lỗi xóa nhiều từ:", e); }
+};
+
   
   
 // TÍNH TOÁN SỐ TỪ TRONG SỔ TAY ĐỂ LÀM NGUỒN CUSTOM
@@ -4375,7 +4451,7 @@ function App() {
     return <QuizSettings mode="grammar" onBack={() => setScreen("home")} onStart={(settings) => { setQuizSettings(settings); setScreen("grammar"); }} />
   }
   // Line ~1170
-  if (screen === "notebook") return <NotebookScreen globalStats={globalStats} onBack={() => { playSound("click"); setScreen("home"); }} onSaveWord={handleSaveDifficultWord} onRemoveWord={handleRemoveWord} onMoveWord={handleMoveWord} />;
+  if (screen === "notebook") return <NotebookScreen globalStats={globalStats} onBack={() => { playSound("click"); setScreen("home"); }} onSaveWord={handleSaveDifficultWord} onRemoveWord={handleRemoveWord} onMoveWord={handleMoveWord} onMoveManyWords={handleMoveManyWords} onRemoveManyWords={handleRemoveManyWords} />;
   
   // ĐÃ FIX BƯỚC 1: Truyền thêm onMoveWord={handleMoveWord} vào 2 dòng này
   if (screen === "vocab") return <WordQuiz mode="vocab" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} stats={globalStats.vocab} isMusicPlaying={isMusicPlaying} kpi={{target: dailyTarget, current: todayMasteredCount}} />;
