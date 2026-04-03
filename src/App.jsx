@@ -3562,10 +3562,10 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                         <span style={{ fontSize: "12px", color: "#999", whiteSpace: "nowrap" }}>{selectedToDelete.size} từ</span>
                         {viewAllModal.listType !== "masteredWords" && (
                             <button
-                                title="Đánh dấu là đã thuộc"
+                                title="Chuyển lên Ô Vàng"
                                 onClick={() => {
                                     if (!window.confirm(`Đánh dấu ${selectedToDelete.size} từ là ĐÃ THUỘC?`)) return;
-                                    onMoveManyWords(activeTab, viewAllModal.listType, "masteredWords", [...selectedToDelete]);
+                                    onMoveManyWords(activeTab, viewAllModal.listType, "savedWords", [...selectedToDelete]);
                                     setSelectedToDelete(new Set());
                                 }}
                                 style={{ width: "34px", height: "34px", borderRadius: "50%", backgroundColor: "#4CAF50", color: "white", border: "none", fontSize: "16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(76,175,80,0.4)", flexShrink: 0 }}
@@ -4118,7 +4118,10 @@ function App() {
   }, []); 
 
   useEffect(() => {
+    const timeout = setTimeout(() => setAuthChecking(false), 8000);
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      clearTimeout(timeout);
       if (user) {
         setCurrentUser(user);
         const docRef = doc(db, "users", user.uid);
