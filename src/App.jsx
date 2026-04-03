@@ -1025,11 +1025,16 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
             let insertIndex = newData.length; 
             if (remaining > 3) insertIndex = current + 2 + Math.floor(Math.random() * (remaining - 1));
             
-            // 2. LẤY LẠI CHÍNH CÂU VỪA SAI LÀM CÂU PHẠT (Học từ vựng thì sai đâu phạt đó mới nhớ lâu)
-            let penaltyItem = {...newData[current]};
-            // ĐÃ FIX TRÁNH SẬP WEB: Chỉ trộn đáp án nếu câu đó là trắc nghiệm (có options)
-            if (penaltyItem.options) {
-                penaltyItem.options = shuffleArray([...penaltyItem.options]); 
+            // ✅ SỬA LẠI
+            const originalItem = newData[current];
+            const penaltyItem = { ...originalItem };
+            if (originalItem.options) {
+                const shuffledOptions = shuffleArray([...originalItem.options]);
+                penaltyItem.options = shuffledOptions;
+                // Giữ answer khớp với options sau shuffle
+                penaltyItem.answer = shuffledOptions.includes(originalItem.answer)
+                    ? originalItem.answer
+                    : originalItem.options[0]; // fallback: giữ options gốc nếu không khớp
             }
             newData.splice(insertIndex, 0, penaltyItem);
 
@@ -1879,18 +1884,26 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
     fetchVocabForDict();
   }, []);
 
-  // 2. HÀM QUÉT CHỮ BÔI ĐEN BẰNG CHUỘT/CẢM ỨNG (ĐÃ GIẢN LƯỢC CHO FIXED BAR)
-  // THAY BẰNG:
-  const handleSelection = (e) => {
-      setTimeout(async () => { 
-          // Bỏ qua nếu click vào side panel
-          const sidePanel = document.getElementById('side-panel-dict');
-          if (sidePanel && e.target && sidePanel.contains(e.target)) return;
+  // 2. HÀM QUÉT CHỮ BÔI ĐEN BẰNG CHUỘT/CẢM ỨNG
+const mouseDownPosRef = useRef({ x: 0, y: 0 });
 
-          const selection = window.getSelection();
-          if (selection && !selection.isCollapsed) {
-              const text = selection.toString().trim();
-              if (text && text.length >= 2 && text.split(/\s+/).length <= 40 && text.length < 300) {
+const handleSelection = (e) => {
+    // Nếu là mouseup mà chuột không di chuyển đủ xa so với lúc nhấn → là click đơn, bỏ qua
+    if (e.type === 'mouseup') {
+        const dx = Math.abs(e.clientX - mouseDownPosRef.current.x);
+        const dy = Math.abs(e.clientY - mouseDownPosRef.current.y);
+        if (dx < 5 && dy < 5) return; // click đơn, không bôi đen
+    }
+
+    setTimeout(async () => { 
+        // Bỏ qua nếu click vào side panel
+        const sidePanel = document.getElementById('side-panel-dict');
+        if (sidePanel && e.target && sidePanel.contains(e.target)) return;
+
+        const selection = window.getSelection();
+        if (selection && !selection.isCollapsed) {
+            const text = selection.toString().trim();
+            if (text && text.length >= 2 && text.split(/\s+/).length <= 40 && text.length < 300) {
                   const anchorNode = selection.anchorNode;
                   const container = document.getElementById('grammar-quiz-content');
                   if (container && !container.contains(anchorNode)) return;
@@ -1911,11 +1924,13 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
                       ];
                       const allSources = [...vocabDict, ...personalWords];
 
-                      const foundInSheet = allSources.find(item => {
+                     const foundInSheet = cleanWord.trim().split(/\s+/).length >= 4 ? null : allSources.find(item => {
                           if (!item.word) return false;
                           const dictWord = item.word.toLowerCase().trim().replace(/\s*\(.*?\)\s*/g, '').trim();
                           const searched = cleanWord.toLowerCase().trim();
-                          return dictWord === searched || dictWord.startsWith(searched) || searched.startsWith(dictWord);
+                          // Chỉ match nếu từ trong sheet đủ dài (>= 3 ký tự) tránh match "the", "a", "to"...
+                          if (dictWord.length < 3) return false;
+                          return dictWord === searched || dictWord === searched.split(/\s+/).find(w => w === dictWord);
                       });
                       // Nếu tìm thấy trong sheet → hiện ngay, KHÔNG gọi AI
                       if (foundInSheet) {
@@ -1941,7 +1956,18 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
                                   const flashModel = textModels.find(m => m.name.includes("1.5-flash")) || textModels.find(m => m.name.includes("flash"));
                                   window.globalCachedModel = flashModel ? flashModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
                               }
-                              const prompt = `Phân tích từ/cụm từ tiếng Anh: "${cleanWord}". Trả về CHỈ 1 OBJECT JSON: {"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia được", "synonym": "tối thiểu 3 từ đồng nghĩa và tối đa là 7 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}`;
+                              const wordCount = cleanWord.trim().split(/\s+/).length;
+                              const isSentence = wordCount >= 6;
+                              const isStructure = !isSentence && (
+                                  /\b(if|when|although|because|unless|until|after|before|so that|in order to|not only|either|neither|both|whether|as long as|provided that|as soon as)\b/i.test(cleanWord) ||
+                                  /\b(have been|has been|had been|will have|would have|could have|should have|must have|be able to|used to|going to)\b/i.test(cleanWord)
+                              );
+
+                              const prompt = isSentence
+                                  ? `Dịch câu tiếng Anh sau sang tiếng Việt tự nhiên, sau đó giải thích ngắn gọn cấu trúc ngữ pháp chính trong câu. Câu: "${cleanWord}". Trả về CHỈ 1 OBJECT JSON: {"word": "Bản dịch tiếng Việt", "phonetic": "", "meaning": "Bản dịch đầy đủ, tự nhiên", "noun_meaning": "", "verb_meaning": "", "adj_meaning": "", "synonym": "", "usage": "Giải thích cấu trúc ngữ pháp chính của câu này"}`
+                                  : isStructure
+                                  ? `Giải thích cấu trúc ngữ pháp tiếng Anh: "${cleanWord}". Trả về CHỈ 1 OBJECT JSON: {"word": "${cleanWord}", "phonetic": "Cách dùng tóm tắt", "meaning": "Ý nghĩa/chức năng của cấu trúc này", "noun_meaning": "", "verb_meaning": "", "adj_meaning": "", "synonym": "Các cấu trúc tương đương hoặc thay thế", "usage": "1 câu ví dụ minh họa cấu trúc"}`
+                                  : `Phân tích từ/cụm từ tiếng Anh: "${cleanWord}". Trả về CHỈ 1 OBJECT JSON: {"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia được", "synonym": "tối thiểu 3 từ đồng nghĩa và tối đa là 7 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}`;
                               const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${getActiveKey()}`, {
                                   method: "POST", headers: { "Content-Type": "application/json" },
                                   body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
@@ -1953,7 +1979,7 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
                                       window.globalCachedModel = null;
                                       if (rotateKey()) {
                                           await new Promise(r => setTimeout(r, 1000));
-                                          return doLookup(); // Thử lại với key mới
+                                          return doLookup();
                                       }
                                   }
                                   throw new Error(data.error.message);
@@ -1979,16 +2005,21 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
       }, 50);
   };
 
-  // --- ĐÃ FIX: Lắng nghe sự kiện click/bôi đen trên TOÀN BỘ trang web (cả vùng xanh) ---
+  // Lắng nghe sự kiện bôi đen — track mousedown để phân biệt click đơn vs kéo chọn
   useEffect(() => {
+    const onMouseDown = (e) => {
+        mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
+    };
+    document.addEventListener("mousedown", onMouseDown);
     document.addEventListener("mouseup", handleSelection);
     document.addEventListener("touchend", handleSelection);
-    document.addEventListener("dblclick", handleSelection); // ← thêm dòng này
+    document.addEventListener("dblclick", handleSelection);
     
     return () => {
+        document.removeEventListener("mousedown", onMouseDown);
         document.removeEventListener("mouseup", handleSelection);
         document.removeEventListener("touchend", handleSelection);
-        document.removeEventListener("dblclick", handleSelection); // ← thêm dòng này
+        document.removeEventListener("dblclick", handleSelection);
     };
 }, []);
 
@@ -2272,17 +2303,21 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
         const stripPrefix = (str) => (str || "").replace(/^\s*[A-Da-d][.)]\s*/i, "").trim();
 
         // Hàm tìm option khớp với answer sau khi strip prefix
-        const normalizeAnswer = (options, answer) => {
-          const answerClean = stripPrefix(answer).toLowerCase();
-          const matched = options.find(opt => stripPrefix(opt).toLowerCase() === answerClean);
-          if (matched) return matched;
-          if (/^[a-d]$/i.test((answer || "").trim())) {
-            const letter = answer.trim().toUpperCase();
-            const byLetter = options.find(opt => opt.trim().toUpperCase().startsWith(letter));
-            if (byLetter) return byLetter;
-          }
-          return answer;
-        };
+        // ✅ SỬA LẠI
+    const normalizeAnswer = (options, answer) => {
+      const answerClean = stripPrefix(answer).toLowerCase();
+      const matched = options.find(opt => stripPrefix(opt).toLowerCase() === answerClean);
+      if (matched) return matched;
+      if (/^[a-d]$/i.test((answer || "").trim())) {
+        const letter = answer.trim().toUpperCase();
+        const idx = letter.charCodeAt(0) - 65; // A=0, B=1, C=2, D=3
+        if (options[idx]) return options[idx]; // ← map A→[0], B→[1]... chính xác hơn
+        const byLetter = options.find(opt => opt.trim().toUpperCase().startsWith(letter));
+        if (byLetter) return byLetter;
+      }
+      // Fallback cuối: trả options[0] thay vì giá trị không tồn tại
+      return options[0] || answer;
+    };
 
         let finalPool = [];
         if (isPassageMode) {
@@ -2329,12 +2364,16 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
     return () => clearInterval(timer);
   }, [IS_FREE_MODE, loadingData, isGameOver]);
 
+  // ✅ SỬA LẠI — thêm guard kiểm tra current vẫn hợp lệ trước khi handleAnswer
   useEffect(() => {
-    if (selected !== null || loadingData || isGameOver || DIFFICULTY_LEVEL === 4 || IS_FREE_MODE) return;
-    if (questionsData[current]?.type === "crossword_boss") return;
-    if (timeLeft === null || timeLeft <= 0) { if (timeLeft !== null) handleAnswer(null); return; }
-    const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
-    return () => clearInterval(timer);
+      if (selected !== null || loadingData || isGameOver || DIFFICULTY_LEVEL === 4 || IS_FREE_MODE) return;
+      if (questionsData[current]?.type === "crossword_boss") return;
+      if (timeLeft === null || timeLeft <= 0) {
+          if (timeLeft !== null && questionsData[current]) handleAnswer(null); // ← thêm guard
+          return;
+      }
+      const timer = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
+      return () => clearInterval(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLeft, selected, loadingData, isGameOver, DIFFICULTY_LEVEL, current, questionsData]);
 
@@ -2426,8 +2465,13 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
             const remaining = newData.length - current - 1;
             let insertIndex = newData.length; 
             if (remaining > 3) insertIndex = current + 2 + Math.floor(Math.random() * (remaining - 1));
-            let penaltyItem = {...newData[current]};
-            penaltyItem.options = shuffleArray([...penaltyItem.options]);
+            const origItem = newData[current];
+            const shuffledOpts = shuffleArray([...(origItem.options || [])]);
+            const penaltyItem = {
+              ...origItem,
+              options: shuffledOpts.includes(origItem.answer) ? shuffledOpts : [...(origItem.options || [])],
+              answer: origItem.answer,
+            };
             newData.splice(insertIndex, 0, penaltyItem);
             return newData;
           });
@@ -2572,27 +2616,28 @@ const formatExplanation = (explanation) => {
 
   if (typeof explanation === 'object' && explanation !== null) {
     const sections = [
-      { key: 'translation',    icon: '🇻🇳', label: 'Dịch câu',             bgColor: '#e8f5e9', borderColor: '#66bb6a', labelColor: '#2e7d32', isPlain: true  },
-      { key: 'grammar_points', icon: '📐', label: 'Điểm ngữ pháp',         bgColor: '#e3f2fd', borderColor: '#42a5f5', labelColor: '#1565c0', isPlain: false },
-      { key: 'wrong_options',  icon: '❌', label: 'Các đáp án sai',         bgColor: '#fff3e0', borderColor: '#ffa726', labelColor: '#e65100', isPlain: false },
-      { key: 'key_vocab',      icon: '📚', label: 'Từ vựng quan trọng',     bgColor: '#fce4ec', borderColor: '#ec407a', labelColor: '#880e4f', isPlain: false },
+      { key: 'translation',    icon: '🇻🇳', label: 'Dịch câu',           borderColor: '#66bb6a', labelColor: '#2e7d32', isPlain: true  },
+      { key: 'grammar_points', icon: '📐', label: 'Điểm ngữ pháp',       borderColor: '#42a5f5', labelColor: '#1565c0', isPlain: false },
+      { key: 'wrong_options',  icon: '❌', label: 'Các đáp án sai',       borderColor: '#ffa726', labelColor: '#e65100', isPlain: false },
+      { key: 'key_vocab',      icon: '📚', label: 'Từ vựng quan trọng',   borderColor: '#ec407a', labelColor: '#880e4f', isPlain: false },
     ];
-  return (
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.75fr) auto", gap: "8px 6px", width: "100%", alignItems: "center" }}>
-          {displayWords.map(word => {
-              const wordStr = typeof word === 'string' ? word : word.word;
-              return (
-                <React.Fragment key={wordStr}>
-              <div style={{ fontWeight: "bold", color: labelColor, fontSize: "13px", marginBottom: "8px", display: "flex", alignItems: "center", gap: "5px" }}>
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%" }}>
+        {sections.map(({ key, icon, label, borderColor, labelColor, isPlain }) => {
+          const content = explanation[key];
+          if (!content) return null;
+          return (
+            <div key={key} style={{ borderLeft: `4px solid ${borderColor}`, paddingLeft: "12px" }}>
+              <div style={{ fontWeight: "bold", color: labelColor, fontSize: "13px", marginBottom: "6px", display: "flex", alignItems: "center", gap: "5px" }}>
                 <span>{icon}</span> {label}
               </div>
               {isPlain
                 ? <p style={{ margin: 0, fontSize: "15px", lineHeight: "1.7", color: "#2c3e50" }}>{renderInlineText(content)}</p>
                 : renderBulletList(content, borderColor)
               }
-            </React.Fragment>
-              )
-          })}
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -3034,6 +3079,12 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [wordDetailModal]);
+
+  // Tự động phát âm khi mở modal hoặc chuyển từ
+  useEffect(() => {
+    if (!wordDetailModal || activeTab === "grammar") return;
+    speakWord(wordDetailModal.wordStr, 'en-US');
+  }, [wordDetailModal?.wordStr]);
 
   const [isEditingManual, setIsEditingManual] = useState(false);
   const [manualInputs, setManualInputs] = useState({ phonetic: "", meaning: "", usage: "", synonym: "", structure: "" });
