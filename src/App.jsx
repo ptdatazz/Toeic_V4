@@ -4182,19 +4182,13 @@ function App() {
       if (!isCorrect && type !== "grammar") {
           const normStr = normalizeWord(itemValue);
           
-          // Càn quét và xóa mọi biến thể của từ này ở CẢ 3 Ô
-          newSaved = newSaved.filter(w => normalizeWord(w) !== normStr);
-          newWrong = newWrong.filter(w => normalizeWord(w) !== normStr);
-          newMastered = newMastered.filter(w => normalizeWord(w) !== normStr);
-
-          // Chỉ nhét duy nhất 1 từ chuẩn vào Ô Đỏ
-          newWrong.push(itemValue);
-          
-          // Ghi đè lại toàn bộ mảng sạch lên Firebase thay vì dùng lệnh arrayRemove (Bị ngu khi khác dấu ngoặc)
-          updatePayload[`${type}.savedWords`] = newSaved;
-          updatePayload[`${type}.wrongWords`] = newWrong;
-          updatePayload[`${type}.masteredWords`] = newMastered;
-          shouldUpdateArrays = true;
+          // Chỉ thêm vào Ô Đỏ nếu chưa có, KHÔNG xóa khỏi Ô Vàng
+          const alreadyWrong = newWrong.some(w => normalizeWord(w) === normStr);
+          if (!alreadyWrong) {
+              newWrong.push(itemValue);
+              updatePayload[`${type}.wrongWords`] = newWrong;
+              shouldUpdateArrays = true;
+          }
       }
     }
 
