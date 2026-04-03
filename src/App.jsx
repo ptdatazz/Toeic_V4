@@ -511,8 +511,8 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
               const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
               const listData = await listRes.json();
               const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
-              const flashModel = textModels.find(m => m.name.includes("flash"));
-              window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
+              const flashModel = textModels.find(m => m.name.includes("1.5-flash")) || textModels.find(m => m.name.includes("flash"));
+              window.globalCachedModel = flashModel ? flashModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
           }
 
           const prompt = `Giải thích ngắn gọn ý nghĩa của từ tiếng Anh "${keyword}" bằng tiếng Việt. Cung cấp phiên âm, từ loại, nghĩa chính và 1 ví dụ thực tế. Giữ nội dung xúc tích dưới 4 dòng.`;
@@ -1938,8 +1938,8 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
                                   const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
                                   const listData = await listRes.json();
                                   const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods?.includes("generateContent"));
-                                  const flashModel = textModels.find(m => m.name.includes("flash"));
-                                  window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
+                                  const flashModel = textModels.find(m => m.name.includes("1.5-flash")) || textModels.find(m => m.name.includes("flash"));
+                                  window.globalCachedModel = flashModel ? flashModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
                               }
                               const prompt = `Phân tích từ/cụm từ tiếng Anh: "${cleanWord}". Trả về CHỈ 1 OBJECT JSON: {"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia được", "synonym": "tối thiểu 3 từ đồng nghĩa và tối đa là 7 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}`;
                               const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${getActiveKey()}`, {
@@ -2015,8 +2015,8 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
               const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
               const listData = await listRes.json();
               const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
-              const flashModel = textModels.find(m => m.name.includes("flash"));
-              window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
+              const flashModel = textModels.find(m => m.name.includes("1.5-flash")) || textModels.find(m => m.name.includes("flash"));
+              window.globalCachedModel = flashModel ? flashModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
           }
 
           const prompt = `Phân tích từ/cụm từ tiếng Anh: "${cleanWord}". (Lưu ý: Nếu từ bị dính chữ, hãy tự động sửa thành đúng chính tả).
@@ -2065,8 +2065,8 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
               const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
               const listData = await listRes.json();
               const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
-              const flashModel = textModels.find(m => m.name.includes("flash"));
-              window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
+              const flashModel = textModels.find(m => m.name.includes("1.5-flash")) || textModels.find(m => m.name.includes("flash"));
+              window.globalCachedModel = flashModel ? flashModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
           }
 
           let prompt = type === "grammar"
@@ -2226,9 +2226,10 @@ function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuesti
           const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${currentKey}`);
           const listData = await listRes.json();
           const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods?.includes("generateContent"));
-          const flashModel = textModels.find(m => m.name.includes("flash"));
+          const flashModel = textModels.find(m => m.name.includes("1.5-flash")) || textModels.find(m => m.name.includes("flash"));
           if (!flashModel && textModels.length === 0) throw new Error("Không tìm được model từ API");
-          window.globalCachedModel = flashModel ? flashModel.name : textModels[0].name;
+          window.globalCachedModel = flashModel ? flashModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
+         
         }
 
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/${window.globalCachedModel}:generateContent?key=${currentKey}`;
@@ -3091,9 +3092,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
               throw new Error(listData.error.message);
           }
           const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
-          const fastModel = textModels.find(m => m.name.includes("2.0-flash-lite"))
-              || textModels.find(m => m.name.includes("1.5-flash"))
-              || textModels.find(m => m.name.includes("flash"));
+          const fastModel = textModels.find(m => m.name.includes("1.5-flash")) || textModels.find(m => m.name.includes("flash"));
           window.globalCachedModel = fastModel ? fastModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
       }
 
@@ -3147,9 +3146,7 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
               throw new Error(listData.error.message);
           }
           const textModels = (listData.models || []).filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"));
-          const fastModel = textModels.find(m => m.name.includes("2.0-flash-lite"))
-              || textModels.find(m => m.name.includes("1.5-flash"))
-              || textModels.find(m => m.name.includes("flash"));
+          const fastModel = textModels.find(m => m.name.includes("1.5-flash")) || textModels.find(m => m.name.includes("flash"));
           window.globalCachedModel = fastModel ? fastModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
       }
 
