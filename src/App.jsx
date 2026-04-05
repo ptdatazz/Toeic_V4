@@ -3099,7 +3099,10 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
 
   const getPromptForWords = (wordsStr, tab) => {
     if (tab === "grammar") {
-      return `Giải thích các cấu trúc ngữ pháp sau: "${wordsStr}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "cấu trúc", "phonetic": "Công thức", "meaning": "Nghĩa", "usage": "Ví dụ"}]`;
+      return `Giải thích các cấu trúc ngữ pháp TOEIC sau: "${wordsStr}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON, KHÔNG giải thích thêm:\n[{"word": "Tên cấu trúc", "phonetic": "Công thức đầy đủ (VD: S + V + O)", "meaning": "Ý nghĩa / cách dùng cốt lõi trong 1-2 câu", "usage": "1 câu ví dụ tiếng Anh hoàn chỉnh (có dịch nghĩa tiếng Việt trong ngoặc)"}]`;
+    }
+    if (tab === "collocation") {
+      return `Phân tích các collocation (cụm từ cố định) tiếng Anh sau dùng trong TOEIC: "${wordsStr}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON, KHÔNG giải thích thêm:\n[{"word": "Collocation đầy đủ (VD: make a decision)", "phonetic": "Phiên âm IPA của từ khóa chính", "meaning": "Nghĩa tiếng Việt TỐI ĐA 6 TỪ", "usage": "1 câu ví dụ ngắn trong ngữ cảnh TOEIC", "synonym": "2-4 collocation tương đương hoặc từ đồng nghĩa"}]`;
     }
     return `Phân tích các từ/cụm từ tiếng Anh sau: "${wordsStr}".\nCHỈ TRẢ VỀ DUY NHẤT 1 MẢNG JSON:\n[{"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia được", "synonym": "tối thiểu 3 từ đồng nghĩa và tối đa là 7 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}]`;
   };
@@ -3147,11 +3150,13 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
           window.globalCachedModel = fastModel ? fastModel.name : (textModels.length > 0 ? textModels[0].name : "models/gemini-1.5-flash");
       }
 
-      let prompt = currentTab === "grammar" 
-        ? `Giải thích cấu trúc ngữ pháp: "${wordInput}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON:\n{"word": "${wordInput}", "phonetic": "Công thức/cấu trúc", "meaning": "Cách dùng cốt lõi", "usage": "1 ví dụ"}`
+      let prompt = currentTab === "grammar"
+        ? `Giải thích cấu trúc ngữ pháp TOEIC: "${wordInput}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON, KHÔNG giải thích thêm:\n{"word": "${wordInput}", "phonetic": "Công thức đầy đủ (VD: S + V + O)", "meaning": "Ý nghĩa / cách dùng cốt lõi trong 1-2 câu", "usage": "1 câu ví dụ tiếng Anh hoàn chỉnh (có dịch nghĩa tiếng Việt trong ngoặc)"}`
+        : currentTab === "collocation"
+        ? `Phân tích collocation (cụm từ cố định) tiếng Anh dùng trong TOEIC: "${wordInput}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON, KHÔNG giải thích thêm:\n{"word": "Collocation đầy đủ (VD: make a decision)", "phonetic": "Phiên âm IPA của từ khóa chính", "meaning": "Nghĩa tiếng Việt TỐI ĐA 6 TỪ", "usage": "1 câu ví dụ ngắn trong ngữ cảnh TOEIC", "synonym": "2-4 collocation tương đương hoặc từ đồng nghĩa"}`
         : `Phân tích từ/cụm từ tiếng Anh: "${wordInput}".\nCHỈ TRẢ VỀ DUY NHẤT 1 OBJECT JSON, KHÔNG giải thích thêm:\n{"word": "Từ chuẩn (kèm loại từ)", "phonetic": "Phiên âm IPA", "noun_meaning": "Nghĩa (n) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "verb_meaning": "Nghĩa (v) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "adj_meaning": "Nghĩa (adj/adv) TỐI ĐA 5 TỪ TIẾNG VIỆT, để trống nếu không có", "meaning": "Nghĩa chung TỐI ĐA 5 TỪ nếu không chia loại từ được", "synonym": "tối thiểu 3 từ đồng nghĩa và tối đa là 7 từ đồng nghĩa", "usage": "1 câu ví dụ ngắn"}`;
-
-      const requestBody = { contents: [{ parts: [{ text: prompt }] }] };
+      
+        const requestBody = { contents: [{ parts: [{ text: prompt }] }] };
       if (window.globalCachedModel.includes("1.5")) {
           requestBody.generationConfig = { response_mime_type: "application/json" };
       }
@@ -3712,7 +3717,19 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
                                 {/* ĐÃ FIX: Hiện Công Thức nếu đang ở Tab Ngữ Pháp */}
                                 {wordDetailModal.detail.phonetic && (
                                     <p style={{ margin: "0 0 10px 0", fontSize: "15px", fontStyle: "italic", color: "#666", display: "flex", alignItems: "center", gap: "8px" }}>
-                                        {activeTab === "grammar" ? `📐 ${wordDetailModal.detail.phonetic}` : wordDetailModal.detail.phonetic}
+                                        {activeTab === "grammar" ? (
+  <span style={{ 
+    backgroundColor: "#fff3cd", 
+    color: "#b45309", 
+    fontWeight: "bold", 
+    padding: "4px 10px", 
+    borderRadius: "6px",
+    border: "1px solid #f59e0b",
+    fontSize: "15px"
+  }}>
+    📐 {wordDetailModal.detail.phonetic}
+  </span>
+) : wordDetailModal.detail.phonetic}
                                         {activeTab !== "grammar" && (
                                             <button
                                                 onClick={() => speakWord(wordDetailModal.wordStr, 'en-US')}
