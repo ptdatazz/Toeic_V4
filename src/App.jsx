@@ -2611,7 +2611,7 @@ const renderBulletList = (text, bulletColor = "#64b5f6") => {
   });
 };
 
-const formatExplanation = (explanation) => {
+const formatExplanation = (explanation, correctAnswer = null, allOptions = null) => {
   if (!explanation) return null;
 
   if (typeof explanation === 'object' && explanation !== null) {
@@ -2621,10 +2621,35 @@ const formatExplanation = (explanation) => {
       { key: 'wrong_options',  icon: '❌', label: 'Các đáp án sai',       borderColor: '#ffa726', labelColor: '#e65100', isPlain: false },
       { key: 'key_vocab',      icon: '📚', label: 'Từ vựng quan trọng',   borderColor: '#ec407a', labelColor: '#880e4f', isPlain: false },
     ];
+
+    // Rebuild wrong_options từ options thực tế sau shuffle
+    let patchedExplanation = { ...explanation };
+    if (correctAnswer && allOptions && allOptions.length > 0) {
+      const stripPfx = (s) => (s || "").replace(/^\s*[A-Da-d][.)]\s*/i, "").trim();
+      const correctClean = stripPfx(correctAnswer).toLowerCase();
+      const realWrongOptions = allOptions.filter(opt => stripPfx(opt).toLowerCase() !== correctClean);
+
+      // Parse lý do từ AI thành map: "đáp án" -> "lý do"
+      const aiLines = (explanation.wrong_options || "").split('\n').map(l => l.trim()).filter(Boolean);
+      const aiReasonMap = {};
+      aiLines.forEach(line => {
+        const match = line.match(/^[-•*]?\s*(?:[A-Da-d][.)]\s*)?([^:：]+)[：:]\s*(.+)/);
+        if (match) aiReasonMap[stripPfx(match[1].trim()).toLowerCase()] = match[2].trim();
+      });
+
+      patchedExplanation.wrong_options = realWrongOptions
+        .map(opt => {
+          const clean = stripPfx(opt);
+          const reason = aiReasonMap[clean.toLowerCase()] || "Không phù hợp với ngữ cảnh câu hỏi";
+          return `- ${clean}: ${reason}`;
+        })
+        .join('\n');
+    }
+
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%" }}>
         {sections.map(({ key, icon, label, borderColor, labelColor, isPlain }) => {
-          const content = explanation[key];
+          const content = patchedExplanation[key];  // ← dùng patchedExplanation
           if (!content) return null;
           return (
             <div key={key} style={{ borderLeft: `4px solid ${borderColor}`, paddingLeft: "12px" }}>
@@ -2941,7 +2966,7 @@ return (
             )}
 
             <div style={{ marginTop: "15px", cursor: "text", userSelect: "text", WebkitUserSelect: "text" }}>
-              {formatExplanation(currentQ.explanation)}
+              {formatExplanation(currentQ.explanation, currentQ.answer, currentQ.options)}
             </div>
           </div>
 
