@@ -66,7 +66,14 @@ const speakWord = (rawText, lang = 'en-US') => {
 };
 
 // --- CÁC HÀM HỖ TRỢ CHUNG ---
-const shuffleArray = (array) => [...array].sort(() => Math.random() - 0.5);
+const shuffleArray = (array) => {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+};
 
 const getMeaning = (item) => {
   if (item.meaning && item.meaning.trim()) return item.meaning.trim();
@@ -237,7 +244,7 @@ function AuthScreen() {
 }
 
 // --- COMPONENT: CÀI ĐẶT CHUNG TẤT CẢ CÁC MODE ---
-function QuizSettings({ mode, onStart, onBack, customWordsCount = 0 }) {
+function QuizSettings({ mode, onStart, onBack, customWordsCount = 0, customGrammarNotes = [] }) {
   const modeName = mode === "vocab" ? "Từ Vựng" : mode === "collocation" ? "Collocation" : "Ngữ Pháp (AI)";
   const storageKey = `toeic_${mode}_settings`;
   const primaryColor = mode === "vocab" ? "#4CAF50" : mode === "collocation" ? "#9C27B0" : "#2196F3";
@@ -308,30 +315,62 @@ function QuizSettings({ mode, onStart, onBack, customWordsCount = 0 }) {
           </div>
         )}
 
-        {/* LỰA CHỌN PART TOEIC (CHỈ DÀNH CHO NGỮ PHÁP) */}
+        {/* LỰA CHỌN NGUỒN DỮ LIỆU CHO NGỮ PHÁP */}
         {mode === "grammar" && (
           <div style={{ marginBottom: "25px", backgroundColor: "#e3f2fd", padding: "15px", borderRadius: "8px", border: "1px solid #bbdefb" }}>
             <label style={{ fontWeight: "bold", color: "#1565c0", display: "block", marginBottom: "12px", fontSize: "16px" }}>
-              🎯 Chọn phần thi (TOEIC Part):
+              📂 Chọn nguồn ngữ pháp:
             </label>
-            <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "15px", color: "#333" }}>
-                <input type="radio" name="toeicPart" value="scan_skim" checked={settings.toeicPart === "scan_skim"} onChange={(e) => setSettings({...settings, toeicPart: e.target.value})} style={{ transform: "scale(1.2)" }} />
-                <strong>🔥 Kỹ năng:</strong> Skimming & Scanning (Đọc lướt & Quét data)
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+                <input 
+                  type="radio" 
+                  name="grammarSource" 
+                  value="default" 
+                  checked={settings.grammarSource === "default"} 
+                  onChange={(e) => setSettings({...settings, grammarSource: e.target.value, selectedNoteId: null})} 
+                />
+                <strong>Default:</strong> AI tạo câu hỏi ngẫu nhiên (như cũ)
               </label>
-            <div style={{ display: "flex", gap: "10px", flexDirection: "column" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "15px", color: "#333" }}>
-                <input type="radio" name="toeicPart" value="part5" checked={settings.toeicPart === "part5"} onChange={(e) => setSettings({...settings, toeicPart: e.target.value})} style={{ transform: "scale(1.2)" }} />
-                <strong>Part 5:</strong> Hoàn thành câu (Điền từ)
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "15px", color: "#333" }}>
-                <input type="radio" name="toeicPart" value="part6" checked={settings.toeicPart === "part6"} onChange={(e) => setSettings({...settings, toeicPart: e.target.value})} style={{ transform: "scale(1.2)" }} />
-                <strong>Part 6:</strong> Hoàn thành đoạn văn (Email, Thư...)
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "15px", color: "#333" }}>
-                <input type="radio" name="toeicPart" value="part7" checked={settings.toeicPart === "part7"} onChange={(e) => setSettings({...settings, toeicPart: e.target.value})} style={{ transform: "scale(1.2)" }} />
-                <strong>Part 7:</strong> Đọc hiểu đoạn văn
+
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+                <input 
+                  type="radio" 
+                  name="grammarSource" 
+                  value="custom" 
+                  checked={settings.grammarSource === "custom"} 
+                  onChange={(e) => setSettings({...settings, grammarSource: e.target.value})} 
+                />
+                <strong>Từ file Word của tôi:</strong> Ôn có chủ đích
               </label>
             </div>
+
+            {/* Danh sách file đã upload (chỉ hiện khi chọn custom) */}
+            {settings.grammarSource === "custom" && customGrammarNotes.length > 0 && (
+              <div style={{ marginTop: "15px" }}>
+                <label style={{ fontWeight: "bold", color: "#1565c0", display: "block", marginBottom: "8px" }}>
+                  Chọn file muốn luyện:
+                </label>
+                <select 
+                  value={settings.selectedNoteId || ""} 
+                  onChange={(e) => setSettings({...settings, selectedNoteId: e.target.value})}
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px" }}
+                >
+                  <option value="">-- Chọn file --</option>
+                  {customGrammarNotes.map(note => (
+                    <option key={note.id} value={note.id}>
+                      {note.filename} ({new Date(note.uploadedAt).toLocaleDateString('vi-VN')})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {settings.grammarSource === "custom" && customGrammarNotes.length === 0 && (
+              <p style={{ color: "#d32f2f", fontSize: "14px", marginTop: "10px" }}>
+                Bạn chưa có file nào. Hãy upload file Word ở Sổ Tay → Ngữ Pháp.
+              </p>
+            )}
           </div>
         )}
 
@@ -1032,9 +1071,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
                 const shuffledOptions = shuffleArray([...originalItem.options]);
                 penaltyItem.options = shuffledOptions;
                 // Giữ answer khớp với options sau shuffle
-                penaltyItem.answer = shuffledOptions.includes(originalItem.answer)
-                    ? originalItem.answer
-                    : originalItem.options[0]; // fallback: giữ options gốc nếu không khớp
+                penaltyItem.answer = originalItem.answer;
             }
             newData.splice(insertIndex, 0, penaltyItem);
 
@@ -1806,7 +1843,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
 // =======================================================================
 // COMPONENT MỚI: NGỮ PHÁP TÍCH HỢP AI CHUẨN ETS + TRA TỪ ĐIỂN BÔI ĐEN
 // =======================================================================
-function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuestions, globalStats }) {
+function GrammarQuiz({ onBack, updateGlobal, onSaveWord, settings, learnedQuestions, globalStats, customGrammarNotes = [], selectedNoteId = null }) {
 
   const DIFFICULTY_LEVEL = settings.difficultyLevel;
   const QUIZ_LIMIT = settings.quizLimit; 
@@ -2179,11 +2216,26 @@ const handleSelection = (e) => {
           : Math.max(1, Math.round(QUIZ_LIMIT / questionsPerPassage));
       const adjustedQuizLimit = numPassages * questionsPerPassage;
 
+      // === LẤY NỘI DUNG FILE WORD NẾU CHỌN CUSTOM SOURCE ===
+      let customNoteContent = "";
+      if (settings.grammarSource === "custom" && selectedNoteId && customGrammarNotes.length > 0) {
+        const selectedNote = customGrammarNotes.find(n => n.id === selectedNoteId);
+        if (selectedNote) {
+          // Giới hạn 3000 ký tự để tránh vượt token
+          customNoteContent = selectedNote.content.slice(0, 3000);
+        }
+      }
+
       let prompt = "";
 
       if (!isPassageMode) {
         // PART 5: giữ nguyên cấu trúc cũ
+        const customNoteInstruction = customNoteContent
+          ? `\nDƯỚI ĐÂY LÀ GHI CHÚ NGỮ PHÁP CỦA HỌC VIÊN. BẮT BUỘC chỉ tạo câu hỏi dựa trên các điểm ngữ pháp trong ghi chú này:\n---\n${customNoteContent}\n---\n`
+          : "";
+
         prompt = `Bạn là chuyên gia luyện thi TOEIC chuẩn ETS.
+            ${customNoteInstruction}
             Hãy tạo ${QUIZ_LIMIT} câu hỏi PART 5 (hoàn thành câu, điền từ).
             - Trả về DUY NHẤT 1 mảng JSON, không có chữ thừa.
             - Mỗi câu có đúng 1 chỗ trống (___), 4 đáp án, 1 đáp án đúng.
@@ -2220,6 +2272,7 @@ const handleSelection = (e) => {
                     const partSpecific = TOEIC_PART === "part6" ? part6Instruction : TOEIC_PART === "part7" ? part7Instruction : scanSkimInstruction;
 
                     prompt = `Bạn là chuyên gia luyện thi TOEIC chuẩn ETS.
+            ${customNoteInstruction}
             Hãy tạo ${numPassages} đoạn văn cho phần ${TOEIC_PART.toUpperCase()}, mỗi đoạn có ${questionsPerPassage} câu hỏi.
             Các loại văn bản (lần lượt): ${passageTypeList}.
 
@@ -2281,13 +2334,32 @@ const handleSelection = (e) => {
         // Kiểm tra quota TRƯỚC, rotate key rồi thử lại thay vì crash
         if (data.error) {
           const msg = data.error.message?.toLowerCase() || "";
-          if (msg.includes("quota") || msg.includes("expired") || data.error.code === 429) {
+          const code = data.error.code;
+
+          // Lỗi 503: Server quá tải tạm thời → đợi rồi thử lại, KHÔNG rotate key
+          const retryCountRef = useRef(0);
+          if (code === 503 || msg.includes("high demand") || msg.includes("service unavailable") || msg.includes("overloaded")) {
+            retryCountRef.current += 1;
+            if (retryCountRef.current > 4) { // Tối đa 4 lần (~12 giây)
+              retryCountRef.current = 0;
+              alert("Server AI đang quá tải, vui lòng thử lại sau ít phút!");
+              onBack();
+              return;
+            }
+            setLoadingMsg(`🔄 Server AI đang bận, thử lại lần ${retryCountRef.current}/4...`);
+            await new Promise(r => setTimeout(r, 3000));
+            isFetchingRef.current = false;
+            return fetchGrammarFromAI.current();
+          }
+
+          // Lỗi quota / hết key → rotate sang key khác
+          if (msg.includes("quota") || msg.includes("expired") || code === 429) {
             window.globalCachedModel = null;
             if (rotateKey()) {
               console.log("⏳ Đổi key, thử lại sau 1.5s...");
               await new Promise(r => setTimeout(r, 1500));
               isFetchingRef.current = false;
-              setLoadingData(true); // ← Giữ loading=true trước khi finally tắt nó
+              setLoadingData(true);
               return fetchGrammarFromAI.current();
             }
           }
@@ -2302,34 +2374,41 @@ const handleSelection = (e) => {
         // Hàm strip prefix "A) " / "A." / "(A)" khỏi đầu chuỗi
         const stripPrefix = (str) => (str || "").replace(/^\s*[A-Da-d][.)]\s*/i, "").trim();
 
-        // Hàm tìm option khớp với answer sau khi strip prefix
-        // ✅ SỬA LẠI
-    const normalizeAnswer = (options, answer) => {
-      const answerClean = stripPrefix(answer).toLowerCase();
-      const matched = options.find(opt => stripPrefix(opt).toLowerCase() === answerClean);
-      if (matched) return matched;
-      if (/^[a-d]$/i.test((answer || "").trim())) {
-        const letter = answer.trim().toUpperCase();
-        const idx = letter.charCodeAt(0) - 65; // A=0, B=1, C=2, D=3
-        if (options[idx]) return options[idx]; // ← map A→[0], B→[1]... chính xác hơn
-        const byLetter = options.find(opt => opt.trim().toUpperCase().startsWith(letter));
-        if (byLetter) return byLetter;
-      }
-      // Fallback cuối: trả options[0] thay vì giá trị không tồn tại
-      return options[0] || answer;
-    };
+        // FIX: normalizeAnswer phải nhận options GỐC (chưa shuffle) để map A/B/C/D đúng index
+        const normalizeAnswer = (originalOptions, shuffledOptions, answer) => {
+          // Ưu tiên 1: match trực tiếp theo text (sau khi strip prefix)
+          const answerClean = stripPrefix(answer).toLowerCase();
+          const matchedInShuffled = shuffledOptions.find(opt => stripPrefix(opt).toLowerCase() === answerClean);
+          if (matchedInShuffled) return matchedInShuffled;
+
+          // Ưu tiên 2: nếu answer là chữ cái A/B/C/D → map theo index của options GỐC (chưa shuffle)
+          if (/^[a-d]$/i.test((answer || "").trim())) {
+            const idx = answer.trim().toUpperCase().charCodeAt(0) - 65;
+            const originalText = originalOptions[idx]; // Lấy text đúng từ mảng GỐC
+            if (originalText) {
+              // Tìm text đó trong mảng đã shuffle để trả về đúng reference
+              const matchInShuffled = shuffledOptions.find(opt => stripPrefix(opt).toLowerCase() === stripPrefix(originalText).toLowerCase());
+              if (matchInShuffled) return matchInShuffled;
+            }
+          }
+
+          // Fallback: log cảnh báo thay vì âm thầm trả options[0] sai
+          console.warn(`[normalizeAnswer] Không tìm được đáp án khớp! answer="${answer}", options=`, shuffledOptions);
+          return answer; // Trả về text gốc của AI, để handleAnswer so sánh rồi tính sai nếu thực sự không khớp
+        };
 
         let finalPool = [];
         if (isPassageMode) {
           parsed.forEach(doc => {
             doc.questions.forEach(q => {
+              const originalOptions = [...q.options]; // Giữ thứ tự GỐC trước khi shuffle
               const shuffledOptions = shuffleArray(q.options);
               finalPool.push({
                 passage: doc.passage,
                 doc_type: doc.doc_type || "",
                 question: q.question,
                 options: shuffledOptions,
-                answer: normalizeAnswer(shuffledOptions, q.answer),
+                answer: normalizeAnswer(originalOptions, shuffledOptions, q.answer),
                 explanation: q.explanation,
               });
             });
@@ -2337,11 +2416,11 @@ const handleSelection = (e) => {
           finalPool = finalPool.slice(0, adjustedQuizLimit);
         } else {
           finalPool = parsed.map(q => {
+            const originalOptions = [...q.options]; // Giữ thứ tự GỐC trước khi shuffle
             const shuffledOptions = shuffleArray(q.options);
-            return { ...q, options: shuffledOptions, answer: normalizeAnswer(shuffledOptions, q.answer) };
+            return { ...q, options: shuffledOptions, answer: normalizeAnswer(originalOptions, shuffledOptions, q.answer) };
           });
         }
-
         setQuestionsData(finalPool);
 
       } catch (error) {
@@ -2438,7 +2517,7 @@ const handleSelection = (e) => {
     setSelected(actualOption);
 
     const currentQ = questionsData[current];
-    const isCorrect = actualOption === currentQ.answer;
+    const isCorrect = !isTimeout && (actualOption === currentQ.answer)
     
     updateGlobal("grammar", isCorrect, currentQ.question);
 
@@ -3070,7 +3149,7 @@ function ModeSelectionScreen({ onModeSelect, onNotebookClick }) {
 // =======================================================================
 // COMPONENT: SỔ TAY TÍCH HỢP AI + SỬA BẰNG TAY (MANUAL EDIT) XỊN SÒ
 // =======================================================================
-function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveWord, onMoveManyWords, onRemoveManyWords }) {  const [activeTab, setActiveTab] = useState("vocab");
+function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveWord, onMoveManyWords, onRemoveManyWords, onUploadGrammarFile, customGrammarNotes = [] }) {  const [activeTab, setActiveTab] = useState("vocab");
   const [newWord, setNewWord] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [selectedToDelete, setSelectedToDelete] = useState(new Set());
@@ -3544,6 +3623,53 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
       </button>
     </form>
 
+    {/* === UPLOAD FILE WORD NGỮ PHÁP (CHỈ HIỆN KHI Ở TAB NGỮ PHÁP) === */}
+    {activeTab === "grammar" && (
+      <div style={{ marginBottom: "16px", backgroundColor: "#e3f2fd", padding: "15px", borderRadius: "10px", border: "1px solid #90caf9" }}>
+        <p style={{ margin: "0 0 10px 0", fontWeight: "bold", color: "#1565c0", fontSize: "15px" }}>
+          📄 File Word Ngữ Pháp Của Tôi
+        </p>
+        <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "#555" }}>
+          Upload file .docx ghi chú ngữ pháp để AI tạo câu hỏi đúng chủ đề bạn đang học.
+        </p>
+
+        {/* Danh sách file đã upload */}
+        {customGrammarNotes.length > 0 && (
+          <div style={{ marginBottom: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
+            {customGrammarNotes.map(note => (
+              <div key={note.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff", padding: "8px 12px", borderRadius: "8px", border: "1px solid #bbdefb" }}>
+                <div style={{ textAlign: "left", minWidth: 0 }}>
+                  <p style={{ margin: 0, fontWeight: "bold", color: "#1565c0", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    📝 {note.filename}
+                  </p>
+                  <p style={{ margin: 0, fontSize: "11px", color: "#999" }}>
+                    {new Date(note.uploadedAt).toLocaleDateString('vi-VN')} · {note.content.length} ký tự
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Nút upload */}
+        <label style={{ display: "block", width: "100%", padding: "10px", backgroundColor: "#1976d2", color: "white", borderRadius: "8px", fontWeight: "bold", cursor: "pointer", textAlign: "center", fontSize: "14px", boxSizing: "border-box" }}>
+          ➕ Upload file .docx mới
+          <input
+            type="file"
+            accept=".docx"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files[0];
+              if (file && onUploadGrammarFile) {
+                onUploadGrammarFile(file);
+                e.target.value = ""; // Reset để upload lại cùng file nếu cần
+              }
+            }}
+          />
+        </label>
+      </div>
+    )}
+
     {/* NÚT MỞ MODAL JSON */}
     <button
       onClick={() => { playSound("click"); setShowJsonModal(true); setJsonModalStep(1); setJsonWordsInput(""); setJsonPasteInput(""); setJsonSaveStatus(""); }}
@@ -3862,6 +3988,8 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [screen, setScreen] = useState("home"); 
+  const [customGrammarNotes, setCustomGrammarNotes] = useState([]); // Danh sách file ngữ pháp đã upload
+  const [selectedGrammarNoteId, setSelectedGrammarNoteId] = useState(null); // File đang chọn để luyện
 
   const [showProfileMenu, setShowProfileMenu] = useState(false); 
 
@@ -4228,6 +4356,10 @@ function App() {
           if (!data.grammar.learnedWords) data.grammar.learnedWords = [];
           
           setGlobalStats(data);
+          // Load custom grammar notes
+          if (data.grammar && data.grammar.customNotes) {
+            setCustomGrammarNotes(data.grammar.customNotes);
+          }
         }
       } else {
         setCurrentUser(null);
@@ -4384,6 +4516,53 @@ function App() {
     } catch(e) { console.error("Lỗi lưu từ:", e); }
   };
 
+
+  // === HÀM MỚI: UPLOAD FILE WORD NGỮ PHÁP ===
+  const handleUploadGrammarFile = async (file) => {
+    if (!currentUser) return;
+    playSound("click");
+
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      alert("Chỉ hỗ trợ file .docx!");
+      return;
+    }
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const mammoth = await import('mammoth'); // dynamic import để nhẹ hơn
+
+      const result = await mammoth.extractRawText({ arrayBuffer });
+      const rawText = result.value.trim();
+
+      if (!rawText) {
+        alert("File rỗng hoặc không đọc được nội dung!");
+        return;
+      }
+
+      // Tạo object note
+      const newNote = {
+        id: Date.now().toString(),
+        filename: file.name,
+        content: rawText,
+        uploadedAt: new Date().toISOString(),
+        // Có thể thêm structured sau nếu gọi AI làm sạch
+      };
+
+      // Lưu vào Firebase
+      await updateDoc(doc(db, "users", currentUser.uid), {
+        "grammar.customNotes": arrayUnion(newNote)
+      });
+
+      // Cập nhật state local
+      setCustomGrammarNotes(prev => [...prev, newNote]);
+
+      alert(`✅ Đã thêm file "${file.name}" thành công!`);
+    } catch (error) {
+      console.error("Lỗi upload file Word:", error);
+      alert("Có lỗi khi đọc file. Vui lòng thử file .docx khác.");
+    }
+  };
+
   // --- TÍNH NĂNG MỚI: DI CHUYỂN TỪ GIỮA CÁC DANH SÁCH (ĐÃ FIX X-QUANG CHỐNG TRÙNG) ---
   const handleMoveWord = async (type, fromList, toList, wordToMove) => {
       if (!currentUser) return;
@@ -4534,17 +4713,38 @@ const handleRemoveManyWords = async (type, listType, wordsArray) => {
   if (screen === "collocation_settings") {
     return <QuizSettings mode="collocation" onBack={() => setScreen("home")} onStart={(settings) => { setQuizSettings(settings); setScreen("collocation"); }} customWordsCount={customCollocCount} />
   }
+  // THAY ĐỔI DÒNG NÀY:
   if (screen === "grammar_settings") {
-    return <QuizSettings mode="grammar" onBack={() => setScreen("home")} onStart={(settings) => { setQuizSettings(settings); setScreen("grammar"); }} />
+    return <QuizSettings 
+      mode="grammar" 
+      onBack={() => setScreen("home")} 
+      onStart={(settings) => { setQuizSettings(settings); setScreen("grammar"); }} 
+      // Thêm dòng này:
+      customGrammarNotes={customGrammarNotes}
+    />
   }
   // Line ~1170
-  if (screen === "notebook") return <NotebookScreen globalStats={globalStats} onBack={() => { playSound("click"); setScreen("home"); }} onSaveWord={handleSaveDifficultWord} onRemoveWord={handleRemoveWord} onMoveWord={handleMoveWord} onMoveManyWords={handleMoveManyWords} onRemoveManyWords={handleRemoveManyWords} />;
+  if (screen === "notebook") return <NotebookScreen globalStats={globalStats} onBack={() => { playSound("click"); setScreen("home"); }} onSaveWord={handleSaveDifficultWord} onRemoveWord={handleRemoveWord} onMoveWord={handleMoveWord} onMoveManyWords={handleMoveManyWords} onRemoveManyWords={handleRemoveManyWords} onUploadGrammarFile={handleUploadGrammarFile} customGrammarNotes={customGrammarNotes} />;
   
   // ĐÃ FIX BƯỚC 1: Truyền thêm onMoveWord={handleMoveWord} vào 2 dòng này
   if (screen === "vocab") return <WordQuiz mode="vocab" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} stats={globalStats.vocab} isMusicPlaying={isMusicPlaying} kpi={{target: dailyTarget, current: todayMasteredCount}} />;
   if (screen === "collocation") return <WordQuiz mode="collocation" onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} stats={globalStats.collocation} isMusicPlaying={isMusicPlaying} kpi={{target: dailyTarget, current: todayMasteredCount}} />;
-  if (screen === "grammar") return <GrammarQuiz onBack={() => { playSound("click"); setScreen("home"); }} updateGlobal={updateGlobalStats} onSaveWord={handleSaveDifficultWord} onMoveWord={handleMoveWord} settings={quizSettings} learnedQuestions={globalStats.grammar.learnedWords || []} globalStats={globalStats} kpi={{target: dailyTarget, current: todayMasteredCount}} />;
-  // --- TÍNH TOÁN THÔNG SỐ TỪ VỰNG ---
+  if (screen === "grammar") 
+    return <GrammarQuiz 
+      onBack={() => { playSound("click"); setScreen("home"); }} 
+      updateGlobal={updateGlobalStats} 
+      onSaveWord={handleSaveDifficultWord} 
+      onMoveWord={handleMoveWord} 
+      settings={quizSettings} 
+      learnedQuestions={globalStats.grammar.learnedWords || []} 
+      globalStats={globalStats} 
+      kpi={{target: dailyTarget, current: todayMasteredCount}}
+      
+      // === THÊM 2 DÒNG NÀY ===
+      customGrammarNotes={customGrammarNotes}
+      selectedNoteId={quizSettings?.selectedNoteId || null}
+    />;
+    // --- TÍNH TOÁN THÔNG SỐ TỪ VỰNG ---
   const vocabTotal = globalStats.vocab.total;
   const vocabCorrect = globalStats.vocab.correct;
   const uniqueVocabCount = globalStats.vocab.learnedWords?.length || 0;
