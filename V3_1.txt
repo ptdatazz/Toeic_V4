@@ -300,162 +300,205 @@ function QuizSettings({ mode, onStart, onBack, customWordsCount = 0, customGramm
 
   const modeGrad = mode==="vocab" ? "linear-gradient(135deg,#2e7d32,#43a047)" : mode==="collocation" ? "linear-gradient(135deg,#6a1b9a,#8e24aa)" : "linear-gradient(135deg,#1565c0,#1e88e5)";
   const modeIcon = mode==="vocab" ? "🚀" : mode==="collocation" ? "📚" : "🤖";
-  const levelColor = settings.difficultyLevel === 0 ? "#9C27B0" : settings.difficultyLevel === 1 ? primaryColor : settings.difficultyLevel === 2 ? "#FF9800" : settings.difficultyLevel === 3 ? "#E91E63" : "#F44336";
-  const levelName = settings.difficultyLevel === 0 ? (mode === "grammar" ? "Tự Do ⏳" : "Flashcard 🎴") : settings.difficultyLevel === 1 ? "Cơ Bản" : settings.difficultyLevel === 2 ? "Đa Dạng" : settings.difficultyLevel === 3 ? "Sinh Tồn ❤️" : "Time Attack ⏱️";
-
-  const cardStyle = {
-    backgroundColor: "rgba(255,255,255,0.72)",
-    backdropFilter: "blur(12px)",
-    borderRadius: "14px",
-    border: "1px solid rgba(255,255,255,0.9)",
-    padding: "14px 16px",
-    boxShadow: "0 2px 10px rgba(0,0,0,0.07)",
-  };
-  const labelStyle = { fontWeight: "700", color: "#374151", fontSize: "13px", display: "block", marginBottom: "10px", letterSpacing: "0.3px" };
-  const radioCardBase = { display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", padding: "9px 12px", borderRadius: "10px", border: "2px solid transparent", transition: "all 0.15s", fontSize: "13px", color: "#374151", marginBottom: "6px" };
-
   return (
-    <div style={{ position: "fixed", inset: 0, background: `linear-gradient(135deg, ${mode==="vocab"?"#e8f5e9,#f1f8e9":mode==="collocation"?"#f3e5f5,#ede7f6":"#e3f2fd,#e8eaf6"})`, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "inherit" }}>
-      
-      {/* TOPBAR */}
-      <div style={{ background: modeGrad, padding: "0 20px", height: "54px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, boxShadow: "0 2px 16px rgba(0,0,0,0.18)" }}>
-        <button onClick={() => { playSound("click"); onBack(); }} style={{ background: "rgba(255,255,255,0.18)", border: "none", color: "white", borderRadius: "10px", padding: "6px 14px", cursor: "pointer", fontWeight: "bold", fontSize: "13px", fontFamily: "inherit" }}>← Trở về</button>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "22px" }}>{modeIcon}</span>
-          <span style={{ color: "white", fontWeight: "900", fontSize: "17px" }}>Cài Đặt {modeName}</span>
+    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#f5f7fa,#e8edf5)", overflowY:"auto" }}>
+      <div style={{ background:modeGrad, padding:"28px 20px 24px", textAlign:"center", marginBottom:"20px" }}>
+        <div style={{ fontSize:"40px", marginBottom:"6px" }}>{modeIcon}</div>
+        <h2 style={{ color:"white", fontWeight:"900", fontSize:"22px", margin:"0 0 4px 0" }}>Cài Đặt {modeName}</h2>
+        <p style={{ color:"rgba(255,255,255,0.75)", margin:0, fontSize:"13px" }}>
+          {mode==="grammar" ? "✨ AI tạo đề chuẩn TOEIC tự động" : "Chọn độ khó phù hợp với trình độ"}
+        </p>
+      </div>
+      <div style={{ maxWidth:"500px", margin:"0 auto", padding:"0 16px 24px", boxSizing:"border-box" }}>
+      <div style={{ backgroundColor:"white", padding:"20px", borderRadius:"16px", border:"1px solid #eee", textAlign:"left", marginBottom:"16px", boxShadow:"0 2px 12px rgba(0,0,0,0.06)" }}>
+        
+        {/* LỰA CHỌN NGUỒN DỮ LIỆU (CHỈ DÀNH CHO TỪ VỰNG) */}
+        {mode === "vocab" && (
+          <div style={{ marginBottom: "25px", backgroundColor: "#e8f5e9", padding: "15px", borderRadius: "8px", border: "1px solid #c8e6c9" }}>
+            <label style={{ fontWeight: "bold", color: "#2e7d32", display: "block", marginBottom: "12px", fontSize: "16px" }}>
+              📂 Chọn nguồn dữ liệu:
+            </label>
+            <div style={{ display: "flex", gap: "10px", flexDirection: "column" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "15px", color: "#333" }}>
+                <input type="radio" name="dataSource" value="default" checked={settings.dataSource === "default"} onChange={(e) => setSettings({...settings, dataSource: e.target.value})} style={{ transform: "scale(1.2)" }} />
+                <strong>Default:</strong> Trộn ngẫu nhiên (80% mới, 20% cũ)
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "15px", color: "#333" }}>
+                <input type="radio" name="dataSource" value="custom" checked={settings.dataSource === "custom"} onChange={(e) => setSettings({...settings, dataSource: e.target.value})} style={{ transform: "scale(1.2)" }} />
+                <strong>Sổ Tay:</strong> Ôn lại các từ đã Ghim và Làm sai
+              </label>
+            </div>
+          </div>
+        )}
+
+        {/* LỰA CHỌN NGUỒN DỮ LIỆU CHO NGỮ PHÁP */}
+        {mode === "grammar" && (
+          <div style={{ marginBottom: "25px", backgroundColor: "#e3f2fd", padding: "15px", borderRadius: "8px", border: "1px solid #bbdefb" }}>
+            <label style={{ fontWeight: "bold", color: "#1565c0", display: "block", marginBottom: "12px", fontSize: "16px" }}>
+              📂 Chọn nguồn ngữ pháp:
+            </label>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+                <input 
+                  type="radio" 
+                  name="grammarSource" 
+                  value="default" 
+                  checked={settings.grammarSource === "default"} 
+                  onChange={(e) => setSettings({...settings, grammarSource: e.target.value, selectedNoteId: null})} 
+                />
+                <strong>Default:</strong> AI tạo câu hỏi ngẫu nhiên (như cũ)
+              </label>
+
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+                <input 
+                  type="radio" 
+                  name="grammarSource" 
+                  value="custom" 
+                  checked={settings.grammarSource === "custom"} 
+                  onChange={(e) => setSettings({...settings, grammarSource: e.target.value})} 
+                />
+                <strong>Từ file Word của tôi:</strong> Ôn có chủ đích
+              </label>
+            </div>
+
+            {/* Danh sách file đã upload (chỉ hiện khi chọn custom) */}
+            {settings.grammarSource === "custom" && customGrammarNotes.length > 0 && (
+              <div style={{ marginTop: "15px" }}>
+                <label style={{ fontWeight: "bold", color: "#1565c0", display: "block", marginBottom: "8px" }}>
+                  Chọn file muốn luyện:
+                </label>
+                <select 
+                  value={settings.selectedNoteId || ""} 
+                  onChange={(e) => setSettings({...settings, selectedNoteId: e.target.value})}
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px" }}
+                >
+                  <option value="">-- Chọn file --</option>
+                  {customGrammarNotes.map(note => (
+                    <option key={note.id} value={note.id}>
+                      {note.filename} ({new Date(note.uploadedAt).toLocaleDateString('vi-VN')})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {settings.grammarSource === "custom" && customGrammarNotes.length === 0 && (
+              <p style={{ color: "#d32f2f", fontSize: "14px", marginTop: "10px" }}>
+                Bạn chưa có file nào. Hãy upload file Word ở Sổ Tay → Ngữ Pháp.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ĐỘ KHÓ (LEVEL) */}
+        <div style={{ marginBottom: "20px", backgroundColor: "#fff", padding: "15px", borderRadius: "8px", borderLeft: `4px solid ${settings.difficultyLevel === 0 ? "#9C27B0" : settings.difficultyLevel === 1 ? primaryColor : settings.difficultyLevel === 2 ? "#FF9800" : settings.difficultyLevel === 3 ? "#E91E63" : "#F44336"}`, boxShadow: "0 2px 4px rgba(0,0,0,0.05)" }}>
+          <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px", fontSize: "16px" }}>
+            🔥 Level {settings.difficultyLevel}: 
+            <span style={{ color: settings.difficultyLevel === 0 ? "#9C27B0" : settings.difficultyLevel === 1 ? primaryColor : settings.difficultyLevel === 2 ? "#FF9800" : settings.difficultyLevel === 3 ? "#E91E63" : "#F44336", marginLeft: "5px" }}>
+              {settings.difficultyLevel === 0 ? (mode === "grammar" ? "Tự Do ⏳" : "Flashcard 🎴") : settings.difficultyLevel === 1 ? "Cơ Bản" : settings.difficultyLevel === 2 ? "Đa Dạng" : settings.difficultyLevel === 3 ? "Sinh Tồn ❤️" : "Time Attack ⏱️"}
+            </span>
+          </label>
+          <input 
+            type="range" 
+            min="0" 
+            max="4" step="1" 
+            value={settings.difficultyLevel} 
+            onChange={(e) => setSettings({...settings, difficultyLevel: parseInt(e.target.value)})} 
+            style={{ width: "100%", cursor: "pointer" }} 
+          />
         </div>
-        <button onClick={handleStart} style={{ background: "rgba(255,255,255,0.22)", border: "2px solid rgba(255,255,255,0.5)", color: "white", borderRadius: "10px", padding: "6px 18px", cursor: "pointer", fontWeight: "900", fontSize: "14px", fontFamily: "inherit", letterSpacing: "0.5px" }}>
-          🚀 Bắt đầu!
-        </button>
+
+        {/* THÔNG SỐ ĐẶC BIỆT CHO LEVEL 3 & 4 */}
+        {settings.difficultyLevel === 3 && (
+            <div style={{ marginBottom: "20px" }}>
+              {/* CHỌN CHẾ ĐỘ CHƠI (chỉ cho vocab và collocation) */}
+              {mode !== "grammar" && (
+                <div style={{ marginBottom: "20px", backgroundColor: "#fce4ec", padding: "15px", borderRadius: "8px", border: "1px solid #f48fb1" }}>
+                  <label style={{ fontWeight: "bold", color: "#880e4f", display: "block", marginBottom: "12px", fontSize: "16px" }}>
+                    🎮 Chọn chế độ chơi:
+                  </label>
+                  <div style={{ display: "flex", gap: "12px", flexDirection: "column" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "15px", color: "#333" }}>
+                      <input
+                        type="radio"
+                        name="blastMode"
+                        value="classic"
+                        checked={!settings.blastMode}
+                        onChange={() => setSettings({...settings, blastMode: false})}
+                        style={{ transform: "scale(1.2)" }}
+                      />
+                      <span>🗡️ <strong>Cổ điển:</strong> Câu hỏi trắc nghiệm + gõ từ + câu Boss</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "15px", color: "#333" }}>
+                      <input
+                        type="radio"
+                        name="blastMode"
+                        value="blast"
+                        checked={!!settings.blastMode}
+                        onChange={() => setSettings({...settings, blastMode: true})}
+                        style={{ transform: "scale(1.2)" }}
+                      />
+                      <span>🔫 <strong>Bắn Từ:</strong> Bắn đúng nghĩa từ vựng – hành động!</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+              <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px" }}>❤️ Số mạng sinh tồn: <span style={{ color: "#E91E63" }}>{settings.survivalLives} mạng</span></label>
+              <input type="range" min="1" max="10" step="1" value={settings.survivalLives} onChange={(e) => setSettings({...settings, survivalLives: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer" }} />
+            </div>
+        )}
+
+        {settings.difficultyLevel === 4 && (
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px" }}>⏱️ Thời gian bắt đầu: <span style={{ color: "#F44336" }}>{settings.timeAttackSeconds} giây</span></label>
+              <input type="range" min="10" max="120" step="5" value={settings.timeAttackSeconds} onChange={(e) => setSettings({...settings, timeAttackSeconds: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer" }} />
+            </div>
+        )}
+
+        {settings.difficultyLevel <= 2 && (
+          <>
+            {(mode !== "grammar" || (settings.toeicPart !== "part6" && settings.toeicPart !== "part7")) && (
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px" }}>
+                📚 Số câu mỗi lượt: <span style={{ color: primaryColor }}>{settings.quizLimit}</span>
+              </label>
+              
+              <input 
+                type="range" 
+                min={dynamicMin} 
+                max={dynamicMax} 
+                step={mode==="grammar" ? 1 : (mode==="vocab" && settings.dataSource==="custom" ? 1 : 5)} 
+                value={settings.quizLimit} 
+                onChange={(e) => setSettings({...settings, quizLimit: parseInt(e.target.value)})} 
+                style={{ width: "100%", cursor: "pointer" }} 
+              />
+            </div>
+            )}
+
+            {settings.difficultyLevel !== 0 && (
+              <div style={{ marginBottom: "20px" }}>
+                <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px" }}>⏱️ Thời gian/câu: <span style={{ color: "#FF9800" }}>{settings.timePerQuestion}s</span></label>
+                <input type="range" min="3" max="60" step="1" value={settings.timePerQuestion} onChange={(e) => setSettings({...settings, timePerQuestion: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer" }} />
+              </div>
+              )}
+            
+            {settings.difficultyLevel !== 0 && (
+              <div>
+                <label style={{ fontWeight: "bold", color: "#333", display: "block", marginBottom: "8px" }}>🔓 Streak mở khóa nút Quay lại: <span style={{ color: "#2196F3" }}>{settings.requiredStreak}</span></label>
+                <input type="range" min="1" max="10" step="1" value={settings.requiredStreak} onChange={(e) => setSettings({...settings, requiredStreak: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer" }} />
+              </div>
+              )}
+          </>
+        )}
+
       </div>
 
-      {/* BODY — 2 CỘT */}
-      <div style={{ flex: 1, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", padding: "14px 16px", minHeight: 0 }}>
-        
-        {/* CỘT TRÁI */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px", overflow: "hidden" }}>
-
-          {/* NGUỒN DỮ LIỆU */}
-          {mode === "vocab" && (
-            <div style={cardStyle}>
-              <span style={labelStyle}>📂 Nguồn dữ liệu</span>
-              <label style={{ ...radioCardBase, background: settings.dataSource === "default" ? `${primaryColor}15` : "#f9fafb", border: `2px solid ${settings.dataSource === "default" ? primaryColor : "transparent"}` }}>
-                <input type="radio" name="dataSource" value="default" checked={settings.dataSource === "default"} onChange={(e) => setSettings({...settings, dataSource: e.target.value})} style={{ accentColor: primaryColor }} />
-                <div><strong style={{ color: primaryColor }}>Default</strong> — Trộn ngẫu nhiên (80% mới, 20% cũ)</div>
-              </label>
-              <label style={{ ...radioCardBase, background: settings.dataSource === "custom" ? `${primaryColor}15` : "#f9fafb", border: `2px solid ${settings.dataSource === "custom" ? primaryColor : "transparent"}`, marginBottom: 0 }}>
-                <input type="radio" name="dataSource" value="custom" checked={settings.dataSource === "custom"} onChange={(e) => setSettings({...settings, dataSource: e.target.value})} style={{ accentColor: primaryColor }} />
-                <div><strong style={{ color: primaryColor }}>Sổ Tay</strong> — Ôn lại các từ đã Ghim và Làm sai</div>
-              </label>
-            </div>
-          )}
-
-          {mode === "grammar" && (
-            <div style={cardStyle}>
-              <span style={labelStyle}>📂 Nguồn ngữ pháp</span>
-              <label style={{ ...radioCardBase, background: settings.grammarSource === "default" ? "#e3f2fd" : "#f9fafb", border: `2px solid ${settings.grammarSource === "default" ? "#1565c0" : "transparent"}` }}>
-                <input type="radio" name="grammarSource" value="default" checked={settings.grammarSource === "default"} onChange={(e) => setSettings({...settings, grammarSource: e.target.value, selectedNoteId: null})} style={{ accentColor: "#1565c0" }} />
-                <div><strong style={{ color: "#1565c0" }}>Default</strong> — AI tạo câu hỏi ngẫu nhiên</div>
-              </label>
-              <label style={{ ...radioCardBase, background: settings.grammarSource === "custom" ? "#e3f2fd" : "#f9fafb", border: `2px solid ${settings.grammarSource === "custom" ? "#1565c0" : "transparent"}`, marginBottom: settings.grammarSource === "custom" ? "10px" : 0 }}>
-                <input type="radio" name="grammarSource" value="custom" checked={settings.grammarSource === "custom"} onChange={(e) => setSettings({...settings, grammarSource: e.target.value})} style={{ accentColor: "#1565c0" }} />
-                <div><strong style={{ color: "#1565c0" }}>File Word của tôi</strong> — Ôn có chủ đích</div>
-              </label>
-              {settings.grammarSource === "custom" && customGrammarNotes.length > 0 && (
-                <select value={settings.selectedNoteId || ""} onChange={(e) => setSettings({...settings, selectedNoteId: e.target.value})} style={{ width: "100%", padding: "8px 10px", borderRadius: "8px", border: "1.5px solid #90caf9", fontSize: "13px", fontFamily: "inherit" }}>
-                  <option value="">-- Chọn file --</option>
-                  {customGrammarNotes.map(note => <option key={note.id} value={note.id}>{note.filename} ({new Date(note.uploadedAt).toLocaleDateString('vi-VN')})</option>)}
-                </select>
-              )}
-              {settings.grammarSource === "custom" && customGrammarNotes.length === 0 && (
-                <p style={{ color: "#d32f2f", fontSize: "12px", margin: "4px 0 0 0" }}>Chưa có file. Hãy upload ở Sổ Tay → Ngữ Pháp.</p>
-              )}
-            </div>
-          )}
-
-          {/* LEVEL */}
-          <div style={{ ...cardStyle, borderLeft: `4px solid ${levelColor}` }}>
-            <span style={labelStyle}>🔥 Độ khó — <span style={{ color: levelColor, fontWeight: "900" }}>Level {settings.difficultyLevel}: {levelName}</span></span>
-            <input type="range" min="0" max="4" step="1" value={settings.difficultyLevel} onChange={(e) => setSettings({...settings, difficultyLevel: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer", accentColor: levelColor }} />
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px" }}>
-              {["🎴","⭐","🌀","❤️","⏱️"].map((ic, i) => (
-                <span key={i} style={{ fontSize: "16px", opacity: settings.difficultyLevel === i ? 1 : 0.3, transition: "opacity 0.2s" }}>{ic}</span>
-              ))}
-            </div>
-          </div>
-
-          {/* LEVEL 4 — TIME ATTACK */}
-          {settings.difficultyLevel === 4 && (
-            <div style={cardStyle}>
-              <span style={labelStyle}>⏱️ Thời gian bắt đầu: <span style={{ color: "#F44336", fontWeight: "900" }}>{settings.timeAttackSeconds}s</span></span>
-              <input type="range" min="10" max="120" step="5" value={settings.timeAttackSeconds} onChange={(e) => setSettings({...settings, timeAttackSeconds: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer", accentColor: "#F44336" }} />
-            </div>
-          )}
-
-        </div>
-
-        {/* CỘT PHẢI */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px", overflow: "hidden" }}>
-
-          {/* LEVEL 3 — SINH TỒN */}
-          {settings.difficultyLevel === 3 && (
-            <>
-              {mode !== "grammar" && (
-                <div style={cardStyle}>
-                  <span style={labelStyle}>🎮 Chế độ chơi</span>
-                  <label style={{ ...radioCardBase, background: !settings.blastMode ? "#fce4ec" : "#f9fafb", border: `2px solid ${!settings.blastMode ? "#E91E63" : "transparent"}` }}>
-                    <input type="radio" name="blastMode" value="classic" checked={!settings.blastMode} onChange={() => setSettings({...settings, blastMode: false})} style={{ accentColor: "#E91E63" }} />
-                    <div><strong style={{ color: "#880e4f" }}>🗡️ Cổ điển</strong> — Trắc nghiệm + gõ từ + Boss</div>
-                  </label>
-                  <label style={{ ...radioCardBase, background: !!settings.blastMode ? "#fce4ec" : "#f9fafb", border: `2px solid ${!!settings.blastMode ? "#E91E63" : "transparent"}`, marginBottom: 0 }}>
-                    <input type="radio" name="blastMode" value="blast" checked={!!settings.blastMode} onChange={() => setSettings({...settings, blastMode: true})} style={{ accentColor: "#E91E63" }} />
-                    <div><strong style={{ color: "#880e4f" }}>🔫 Bắn Từ</strong> — Bắn đúng nghĩa từ vựng</div>
-                  </label>
-                </div>
-              )}
-              <div style={cardStyle}>
-                <span style={labelStyle}>❤️ Số mạng sinh tồn: <span style={{ color: "#E91E63", fontWeight: "900" }}>{settings.survivalLives} mạng</span></span>
-                <input type="range" min="1" max="10" step="1" value={settings.survivalLives} onChange={(e) => setSettings({...settings, survivalLives: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer", accentColor: "#E91E63" }} />
-              </div>
-            </>
-          )}
-
-          {/* LEVEL 0–2 */}
-          {settings.difficultyLevel <= 2 && (
-            <>
-              {(mode !== "grammar" || (settings.toeicPart !== "part6" && settings.toeicPart !== "part7")) && (
-                <div style={cardStyle}>
-                  <span style={labelStyle}>📚 Số câu mỗi lượt: <span style={{ color: primaryColor, fontWeight: "900" }}>{settings.quizLimit} câu</span></span>
-                  <input type="range" min={dynamicMin} max={dynamicMax} step={mode==="grammar" ? 1 : (mode==="vocab" && settings.dataSource==="custom" ? 1 : 5)} value={settings.quizLimit} onChange={(e) => setSettings({...settings, quizLimit: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer", accentColor: primaryColor }} />
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#9ca3af", marginTop: "4px" }}><span>{dynamicMin}</span><span>{dynamicMax}</span></div>
-                </div>
-              )}
-
-              {settings.difficultyLevel !== 0 && (
-                <div style={cardStyle}>
-                  <span style={labelStyle}>⏱️ Thời gian / câu: <span style={{ color: "#FF9800", fontWeight: "900" }}>{settings.timePerQuestion}s</span></span>
-                  <input type="range" min="3" max="60" step="1" value={settings.timePerQuestion} onChange={(e) => setSettings({...settings, timePerQuestion: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer", accentColor: "#FF9800" }} />
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#9ca3af", marginTop: "4px" }}><span>3s</span><span>60s</span></div>
-                </div>
-              )}
-
-              {settings.difficultyLevel !== 0 && (
-                <div style={cardStyle}>
-                  <span style={labelStyle}>🔓 Streak mở khóa nút Quay lại: <span style={{ color: "#2196F3", fontWeight: "900" }}>{settings.requiredStreak} câu</span></span>
-                  <input type="range" min="1" max="10" step="1" value={settings.requiredStreak} onChange={(e) => setSettings({...settings, requiredStreak: parseInt(e.target.value)})} style={{ width: "100%", cursor: "pointer", accentColor: "#2196F3" }} />
-                </div>
-              )}
-            </>
-          )}
-
-          {/* NÚT BẮT ĐẦU (to, nổi bật) */}
-          <div style={{ marginTop: "auto" }}>
-            <button onClick={handleStart} style={{ width: "100%", padding: "15px", fontSize: "17px", background: modeGrad, color: "white", borderRadius: "14px", border: "none", cursor: "pointer", fontWeight: "900", boxShadow: "0 6px 20px rgba(0,0,0,0.2)", fontFamily: "inherit", letterSpacing: "0.5px" }}>
-              🚀 Bắt đầu Học!
-            </button>
-          </div>
-
-        </div>
+      <button onClick={handleStart} style={{ width:"100%", padding:"15px", fontSize:"17px", background:modeGrad, color:"white", borderRadius:"14px", border:"none", cursor:"pointer", fontWeight:"bold", boxShadow:"0 6px 18px rgba(0,0,0,0.15)", marginBottom:"12px", fontFamily:"inherit" }}>
+        🚀 Bắt đầu Học!
+      </button>
+      <button onClick={() => { playSound("click"); onBack(); }} style={{ width:"100%", padding:"12px", fontSize:"15px", backgroundColor:"white", color:"#666", borderRadius:"14px", border:"2px solid #e0e0e0", cursor:"pointer", fontWeight:"bold", fontFamily:"inherit" }}>
+        ← Trở về
+      </button>
       </div>
     </div>
   );
@@ -1557,7 +1600,7 @@ function WordQuiz({ mode, onBack, updateGlobal, onSaveWord, onMoveWord, settings
   );
 }
 
-if (questionsData.length === 0) {
+if (!loadingData && questionsData.length === 0) {
   return (
     <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:"linear-gradient(135deg,#f5f7fa,#e8edf5)", flexDirection:"column", gap:"16px", padding:"20px", textAlign:"center" }}>
       <div style={{ fontSize:"52px" }}>⚠️</div>
@@ -2921,7 +2964,7 @@ const handleSelection = (e) => {
           <div style={{ fontSize:"64px", marginBottom:"12px" }}>{isWin?"🎉":"☠️"}</div>
           <h1 style={{ color:isWin?"#1565c0":"#c62828", fontWeight:"900", fontSize:"28px", margin:"0 0 6px 0" }}>{isWin?"Hoàn thành!":"Game Over"}</h1>
           <p style={{ color:"#666", marginBottom:"24px" }}>{DIFFICULTY_LEVEL===3?`Sống sót ${score} câu TOEIC!`:DIFFICULTY_LEVEL===4?`Tốc độ đúng ${score} câu!`:"Bạn đã hoàn thành phiên luyện thi!"}</p>
-          <div style={{ flex:1, display:"grid", gridTemplateColumns:"1fr 1fr 1fr", overflow:"hidden", minHeight:0 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px", marginBottom:"24px" }}>
             <div style={{ background:"white", borderRadius:"16px", padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,0.08)" }}>
               <div style={{ fontSize:"28px", fontWeight:"900", color:"#4CAF50" }}>{score}</div>
               <div style={{ fontSize:"12px", color:"#888" }}>✅ Đúng</div>
@@ -3864,157 +3907,195 @@ function NotebookScreen({ globalStats, onBack, onSaveWord, onRemoveWord, onMoveW
 
   const editInputStyle = { width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #90caf9", boxSizing: "border-box", fontSize: "15px", marginBottom: "10px" };
 
-  const stats = globalStats[activeTab] || {};
-  const tabColor = activeTab === "vocab" ? "#FF9800" : activeTab === "collocation" ? "#9C27B0" : "#2196F3";
-  const tabGrad  = activeTab === "vocab"
-    ? "linear-gradient(135deg,#e65100,#ff6f00)"
-    : activeTab === "collocation"
-    ? "linear-gradient(135deg,#6a1b9a,#9c27b0)"
-    : "linear-gradient(135deg,#1565c0,#1e88e5)";
-
   return (
-    <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, display:"flex", flexDirection:"column", overflow:"hidden", background:"linear-gradient(135deg,#f0f2f5,#e4e8f0)", fontFamily:"inherit", boxSizing:"border-box" }}>
-
-
-      {/* ===== HÀNG 1: TOPBAR ===== */}
-      <div style={{ background: tabGrad, padding:"0 20px", height:"56px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0, boxShadow:"0 2px 12px rgba(0,0,0,0.18)" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
-          <button onClick={() => { onBack(); }} style={{ background:"rgba(255,255,255,0.18)", border:"none", color:"white", borderRadius:"10px", padding:"6px 12px", cursor:"pointer", fontWeight:"bold", fontSize:"14px", fontFamily:"inherit" }}>← Về</button>
-          <span style={{ color:"white", fontWeight:"900", fontSize:"18px", letterSpacing:"0.5px" }}>📖 Sổ Tay Của Tôi</span>
-        </div>
-        <div style={{ display:"flex", gap:"6px", background:"rgba(0,0,0,0.18)", borderRadius:"12px", padding:"4px" }}>
-        </div>
+    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#f5f7fa,#e8edf5)", overflowY:"auto" }}>
+    <div style={{ maxWidth:"500px", margin:"0 auto", padding:"0 16px 24px", boxSizing:"border-box" }}>
+      <div style={{ background:"linear-gradient(135deg,#e65100,#ff6f00)", padding:"20px 0 16px", margin:"0 -16px 20px", borderRadius:"0 0 20px 20px" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 16px" }}>
+        <h2 style={{ color:"white", margin:0, fontWeight:"900", fontSize:"20px" }}>📖 Sổ Tay Của Tôi</h2>
         <button
           disabled={isReloading || isAdding}
           onClick={async () => {
             const dict = globalStats[activeTab]?.addedWordsObj || [];
             if (dict.length === 0) return alert("Chưa có từ nào trong sổ tay!");
-            if (!window.confirm(`Reload nghĩa cho ${dict.length} từ? Có thể mất vài phút.`)) return;
-            setIsReloading(true); setReloadProgress({ done: 0, total: dict.length });
+            if (!window.confirm(`Reload nghĩa cho ${dict.length} từ trong tab "${activeTab}"? Có thể mất vài phút.`)) return;
+            setIsReloading(true);
+            setReloadProgress({ done: 0, total: dict.length });
             let updatedList = [];
             for (let i = 0; i < dict.length; i++) {
-              const item = dict[i]; const wordStr = typeof item === "string" ? item : item.word;
-              try { const r = await fetchAI(wordStr, activeTab); r.word = wordStr; updatedList.push(r); } catch(e) { updatedList.push(item); }
+              const item = dict[i];
+              const wordStr = typeof item === "string" ? item : item.word;
+              try {
+                const aiResult = await fetchAI(wordStr, activeTab);
+                aiResult.word = wordStr;
+                updatedList.push(aiResult);
+              } catch(e) {
+                updatedList.push(item); // Giữ nguyên nếu lỗi
+              }
               setReloadProgress({ done: i + 1, total: dict.length });
-              await new Promise(r => setTimeout(r, 300));
+              await new Promise(r => setTimeout(r, 300)); // Tránh spam API
             }
             await onSaveWord(activeTab, updatedList);
-            setIsReloading(false); alert("✅ Đã cập nhật xong toàn bộ nghĩa!");
+            setIsReloading(false);
+            alert("✅ Đã cập nhật xong toàn bộ nghĩa!");
           }}
-          style={{ background:"rgba(255,255,255,0.18)", border:"none", color:"white", borderRadius:"10px", padding:"6px 14px", cursor: isReloading ? "not-allowed":"pointer", fontWeight:"bold", fontSize:"13px", fontFamily:"inherit", opacity: isReloading ? 0.6 : 1 }}>
+          style={{
+            padding: "8px 14px", borderRadius: "20px", border: "none", cursor: isReloading ? "not-allowed" : "pointer",
+            backgroundColor: isReloading ? "#e0e0e0" : "#e3f2fd", color: isReloading ? "#999" : "#1565c0",
+            fontWeight: "bold", fontSize: "13px", display: "flex", alignItems: "center", gap: "6px",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.08)"
+          }}>
           {isReloading ? `🔄 ${reloadProgress.done}/${reloadProgress.total}` : "🔄 Reload nghĩa"}
         </button>
       </div>
+      </div>
+      <p style={{ color:"rgba(255,255,255,0.8)", margin:"4px 16px 0", fontSize:"13px" }}>Nơi lưu trữ bí kíp và khắc phục điểm yếu</p>
+      </div>
 
-      {/* ===== HÀNG 2: THANH NHẬP TỪ ===== */}
-      <div style={{ background:"white", padding:"8px 16px", display:"flex", alignItems:"center", gap:"8px", flexShrink:0, borderBottom:"1px solid #e0e0e0", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", overflow:"hidden", minWidth:0 }}>
-        <form onSubmit={handleAddNew} style={{ display:"flex", gap:"8px", flex:1 }} noValidate>
-          <input
-            type="text" value={newWord} onChange={(e) => setNewWord(e.target.value)} disabled={isAdding}
-            placeholder={activeTab === "grammar" ? "Nhập cấu trúc ngữ pháp (cách nhau bằng dấu phẩy)..." : "Nhập nhiều từ cách nhau bằng dấu phẩy (,)..."}
-            style={{ flex:1, padding:"8px 14px", borderRadius:"10px", border:`1.5px solid ${tabColor}50`, outline:"none", fontSize:"14px", textTransform: activeTab === "grammar" ? "none" : "lowercase", fontFamily:"inherit" }}
-            autoComplete="off" autoCorrect="off" spellCheck="false"
-          />
-          <button type="submit" disabled={!newWord.trim() || isAdding} style={{ padding:"8px 20px", backgroundColor: newWord.trim() ? (isAdding ? "#9e9e9e" : tabColor) : "#e0e0e0", color:"white", border:"none", borderRadius:"10px", fontWeight:"bold", cursor: newWord.trim() && !isAdding ? "pointer":"not-allowed", fontSize:"14px", fontFamily:"inherit", whiteSpace:"nowrap" }}>
-            {isAdding ? "🤖 ..." : "➕ Thêm"}
-          </button>
-        </form>
-        <button onClick={() => { playSound("click"); setShowJsonModal(true); setJsonModalStep(1); setJsonWordsInput(""); setJsonPasteInput(""); setJsonSaveStatus(""); }}
-          style={{ padding:"8px 14px", background:"#e8f5e9", color:"#2e7d32", border:"1px dashed #4CAF50", borderRadius:"10px", fontWeight:"bold", cursor:"pointer", fontSize:"13px", fontFamily:"inherit", whiteSpace:"nowrap" }}>
-          📋 Nhập AI ngoài
-        </button>
-        {activeTab === "grammar" && (
-          <label style={{ padding:"8px 14px", background:"#e3f2fd", color:"#1565c0", border:"1px dashed #90caf9", borderRadius:"10px", fontWeight:"bold", cursor:"pointer", fontSize:"13px", whiteSpace:"nowrap" }}>
-            📄 Upload .docx
-            <input type="file" accept=".docx" style={{ display:"none" }} onChange={(e) => { const f=e.target.files[0]; if(f && onUploadGrammarFile){ onUploadGrammarFile(f); e.target.value=""; } }} />
-          </label>
+      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"20px", backgroundColor:"#f0f0f0", padding:"4px", borderRadius:"14px" }}>
+        {[{id:"vocab",label:"📚 Từ Vựng",color:"#4CAF50"},{id:"collocation",label:"🔗 Colloc.",color:"#9C27B0"},{id:"grammar",label:"🤖 Ngữ Pháp",color:"#2196F3"}].map(t=>(
+          <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{ flex:1, padding:"10px 4px", borderRadius:"10px", border:"none", fontWeight:"bold", cursor:"pointer", transition:"0.2s", fontSize:"12px", backgroundColor:activeTab===t.id?t.color:"transparent", color:activeTab===t.id?"white":"#666", fontFamily:"inherit" }}>{t.label}</button>
+        ))}
+      </div>
+
+      <form onSubmit={handleAddNew} style={{ display: "flex", gap: "8px", marginBottom: "10px", animation: "popIn 0.3s ease-out" }} noValidate>
+      <input 
+        type="text" value={newWord} onChange={(e) => setNewWord(e.target.value)} disabled={isAdding}
+        placeholder={activeTab === "grammar" ? "Nhập cấu trúc (cách nhau bằng dấu phẩy)..." : "Nhập nhiều từ cách nhau bằng dấu phẩy (,)..."}
+        style={{ flex: 1, padding: "12px", borderRadius: "8px", border: "1px solid #ccc", outline: "none", fontSize: "16px", textTransform: activeTab === "grammar" ? "none" : "lowercase" }}
+        autoComplete="off" autoCorrect="off" spellCheck="false"
+      />
+      <button type="submit" disabled={!newWord.trim() || isAdding} style={{ padding: "0 16px", backgroundColor: newWord.trim() ? (isAdding ? "#9e9e9e" : "#FF9800") : "#ccc", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: newWord.trim() && !isAdding ? "pointer" : "not-allowed", fontSize: "15px" }}>
+        {isAdding ? "🤖..." : "➕ Thêm"}
+      </button>
+    </form>
+
+    {/* === UPLOAD FILE WORD NGỮ PHÁP (CHỈ HIỆN KHI Ở TAB NGỮ PHÁP) === */}
+    {activeTab === "grammar" && (
+      <div style={{ marginBottom: "16px", backgroundColor: "#e3f2fd", padding: "15px", borderRadius: "10px", border: "1px solid #90caf9" }}>
+        <p style={{ margin: "0 0 10px 0", fontWeight: "bold", color: "#1565c0", fontSize: "15px" }}>
+          📄 File Word Ngữ Pháp Của Tôi
+        </p>
+        <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "#555" }}>
+          Upload file .docx ghi chú ngữ pháp để AI tạo câu hỏi đúng chủ đề bạn đang học.
+        </p>
+
+        {/* Danh sách file đã upload */}
+        {customGrammarNotes.length > 0 && (
+          <div style={{ marginBottom: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
+            {customGrammarNotes.map(note => (
+              <div key={note.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff", padding: "8px 12px", borderRadius: "8px", border: "1px solid #bbdefb" }}>
+                <div style={{ textAlign: "left", minWidth: 0 }}>
+                  <p style={{ margin: 0, fontWeight: "bold", color: "#1565c0", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    📝 {note.filename}
+                  </p>
+                  <p style={{ margin: 0, fontSize: "11px", color: "#999" }}>
+                    {new Date(note.uploadedAt).toLocaleDateString('vi-VN')} · {note.content.length} ký tự
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
+
+        {/* Nút upload */}
+        <label style={{ display: "block", width: "100%", padding: "10px", backgroundColor: "#1976d2", color: "white", borderRadius: "8px", fontWeight: "bold", cursor: "pointer", textAlign: "center", fontSize: "14px", boxSizing: "border-box" }}>
+          ➕ Upload file .docx mới
+          <input
+            type="file"
+            accept=".docx"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files[0];
+              if (file && onUploadGrammarFile) {
+                onUploadGrammarFile(file);
+                e.target.value = ""; // Reset để upload lại cùng file nếu cần
+              }
+            }}
+          />
+        </label>
       </div>
+    )}
 
-      {/* ===== HÀNG 3: 3 CỘT TỪ VỰNG ===== */}
-      <div style={{ flex:1, display:"grid", gridTemplateColumns:"1fr 1fr 1fr", overflow:"hidden", minHeight:0 }}>
+    {/* NÚT MỞ MODAL JSON */}
+    <button
+      onClick={() => { playSound("click"); setShowJsonModal(true); setJsonModalStep(1); setJsonWordsInput(""); setJsonPasteInput(""); setJsonSaveStatus(""); }}
+      style={{ width: "100%", padding: "10px", marginBottom: "20px", backgroundColor: "#e8f5e9", color: "#2e7d32", border: "1px dashed #4CAF50", borderRadius: "8px", fontWeight: "bold", cursor: "pointer", fontSize: "14px" }}
+    >
+      📋 Nhập từ bằng AI bên ngoài (ChatGPT, Gemini...)
+    </button>
 
-        {/* CỘT 1: Ô VÀNG */}
-        <div style={{ display:"flex", flexDirection:"column", overflow:"hidden", borderRight:"2px solid #ffe0b2" }}>
-          <div style={{ background:"linear-gradient(135deg,#ff6f00,#ffa000)", padding:"10px 14px", display:"flex", alignItems:"center", gap:"8px", flexShrink:0 }}>
-            <span style={{ fontSize:"16px" }}>🔖</span>
-            <span style={{ color:"white", fontWeight:"900", fontSize:"13px" }}>
-              {activeTab === "grammar" ? "Cấu trúc đã lưu" : "Đang học / Khó nhớ"}
-            </span>
-            <span style={{ marginLeft:"auto", background:"rgba(255,255,255,0.25)", color:"white", borderRadius:"20px", padding:"2px 10px", fontSize:"12px", fontWeight:"bold" }}>{(stats.savedWords||[]).length}</span>
-          </div>
-          <div style={{ flex:1, overflowY:"auto", padding:"10px 12px", display:"flex", flexDirection:"column", gap:"6px", scrollbarWidth:"none", msOverflowStyle:"none" }}>
-            {renderTags(stats.savedWords, "#FF9800", "#fff3e0", "savedWords", null, true)}
-          </div>
-        </div>
+    {/* MODAL 3 BƯỚC */}
+    {showJsonModal && (
+      <div onClick={() => setShowJsonModal(false)} style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0,0,0,0.6)", zIndex: 1200, display: "flex", justifyContent: "center", alignItems: "center", padding: "16px", boxSizing: "border-box" }}>
+        <div onClick={e => e.stopPropagation()} style={{ backgroundColor: "white", width: "100%", maxWidth: "440px", borderRadius: "16px", padding: "22px", animation: "popIn 0.3s", boxShadow: "0 10px 30px rgba(0,0,0,0.3)", maxHeight: "90vh", overflowY: "auto" }}>
+          
+          <h3 style={{ margin: "0 0 6px 0", color: "#2c3e50" }}>📋 Nhập từ bằng AI ngoài</h3>
+          <p style={{ margin: "0 0 14px 0", fontSize: "13px", color: "#888" }}>Dùng khi API key hết quota</p>
 
-        {/* CỘT 2: Ô ĐỎ */}
-        <div style={{ display:"flex", flexDirection:"column", overflow:"hidden", borderRight:"2px solid #ffcdd2" }}>
-          <div style={{ background:"linear-gradient(135deg,#c62828,#e53935)", padding:"10px 14px", display:"flex", alignItems:"center", gap:"8px", flexShrink:0 }}>
-            <span style={{ fontSize:"16px" }}>❌</span>
-            <span style={{ color:"white", fontWeight:"900", fontSize:"13px" }}>Làm sai / Cần khắc phục</span>
-            <span style={{ marginLeft:"auto", background:"rgba(255,255,255,0.25)", color:"white", borderRadius:"20px", padding:"2px 10px", fontSize:"12px", fontWeight:"bold" }}>{(stats.wrongWords||[]).length}</span>
+          {/* THANH BƯỚC */}
+          <div style={{ display: "flex", gap: "6px", marginBottom: "18px" }}>
+            {[1,2,3].map(s => <div key={s} style={{ flex: 1, height: "4px", borderRadius: "2px", backgroundColor: jsonModalStep >= s ? "#4CAF50" : "#e0e0e0", transition: "0.3s" }} />)}
           </div>
-          <div style={{ flex:1, overflowY:"auto", padding:"10px 12px", display:"flex", flexDirection:"column", gap:"6px", scrollbarWidth:"none", msOverflowStyle:"none" }}>
-            {activeTab === "grammar"
-              ? <p style={{ color:"#bbb", fontSize:"13px", fontStyle:"italic", textAlign:"center", marginTop:"40px" }}>Không áp dụng cho Ngữ Pháp</p>
-              : renderTags(stats.wrongWords, "#F44336", "#ffebee", "wrongWords", null, true)
-            }
-          </div>
-        </div>
 
-        {/* CỘT 3: Ô XANH */}
-        <div style={{ display:"flex", flexDirection:"column", overflow:"hidden" }}>
-          <div style={{ background:"linear-gradient(135deg,#2e7d32,#43a047)", padding:"10px 14px", display:"flex", alignItems:"center", gap:"8px", flexShrink:0 }}>
-            <span style={{ fontSize:"16px" }}>✅</span>
-            <span style={{ color:"white", fontWeight:"900", fontSize:"13px" }}>Đã thuộc / Ôn ở Lv Cao</span>
-            <span style={{ marginLeft:"auto", background:"rgba(255,255,255,0.25)", color:"white", borderRadius:"20px", padding:"2px 10px", fontSize:"12px", fontWeight:"bold" }}>{(stats.masteredWords||[]).length}</span>
-          </div>
-          <div style={{ flex:1, overflowY:"auto", padding:"10px 12px", display:"flex", flexDirection:"column", gap:"6px", scrollbarWidth:"none", msOverflowStyle:"none" }}>
-            {activeTab === "grammar"
-              ? <p style={{ color:"#bbb", fontSize:"13px", fontStyle:"italic", textAlign:"center", marginTop:"40px" }}>Không áp dụng cho Ngữ Pháp</p>
-              : renderTags(stats.masteredWords, "#4CAF50", "#e8f5e9", "masteredWords", null, true)
-            }
-          </div>
+          {jsonModalStep === 1 && (
+            <>
+              <p style={{ fontWeight: "bold", color: "#333", marginBottom: "8px" }}>Bước 1: Nhập danh sách từ</p>
+              <textarea value={jsonWordsInput} onChange={e => setJsonWordsInput(e.target.value)}
+                placeholder={"apply, absorb, accurate, achieve"} rows={4}
+                style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #ccc", fontSize: "15px", boxSizing: "border-box", resize: "vertical", outline: "none", fontFamily: "inherit" }}
+              />
+              <button disabled={!jsonWordsInput.trim()} onClick={() => { playSound("click"); setJsonModalStep(2); }}
+                style={{ width: "100%", marginTop: "12px", padding: "12px", backgroundColor: jsonWordsInput.trim() ? "#4CAF50" : "#ccc", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: jsonWordsInput.trim() ? "pointer" : "not-allowed" }}>
+                Tiếp theo →
+              </button>
+            </>
+          )}
+
+          {jsonModalStep === 2 && (
+            <>
+              <p style={{ fontWeight: "bold", color: "#333", marginBottom: "8px" }}>Bước 2: Copy prompt → paste vào AI</p>
+              <textarea readOnly value={getPromptForWords(jsonWordsInput.trim(), activeTab)} rows={8}
+                style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #90caf9", fontSize: "13px", boxSizing: "border-box", backgroundColor: "#f0f8ff", fontFamily: "monospace", resize: "none", outline: "none", color: "#1565c0" }}
+              />
+              <button onClick={() => { navigator.clipboard.writeText(getPromptForWords(jsonWordsInput.trim(), activeTab)); playSound("click"); alert("✅ Đã copy! Mở ChatGPT/Gemini/Claude → paste → gửi → copy JSON về."); }}
+                style={{ width: "100%", marginTop: "10px", padding: "12px", backgroundColor: "#2196F3", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
+                📋 Copy Prompt
+              </button>
+              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                <button onClick={() => setJsonModalStep(1)} style={{ flex: 1, padding: "10px", backgroundColor: "#e0e0e0", color: "#333", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>← Quay lại</button>
+                <button onClick={() => { playSound("click"); setJsonModalStep(3); }} style={{ flex: 2, padding: "10px", backgroundColor: "#FF9800", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>Đã có JSON →</button>
+              </div>
+            </>
+          )}
+
+          {jsonModalStep === 3 && (
+            <>
+              <p style={{ fontWeight: "bold", color: "#333", marginBottom: "8px" }}>Bước 3: Paste JSON từ AI vào đây</p>
+              <textarea value={jsonPasteInput} onChange={e => { setJsonPasteInput(e.target.value); setJsonSaveStatus(""); }}
+                placeholder={'[\n  {"word": "apply (v)", "meaning": "áp dụng", ...}\n]'} rows={8}
+                style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #ccc", fontSize: "13px", boxSizing: "border-box", fontFamily: "monospace", resize: "vertical", outline: "none" }}
+              />
+              {jsonSaveStatus && <p style={{ margin: "8px 0 0 0", fontWeight: "bold", color: jsonSaveStatus.startsWith("✅") ? "#4CAF50" : "#f44336" }}>{jsonSaveStatus}</p>}
+              <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
+                <button onClick={() => setJsonModalStep(2)} style={{ flex: 1, padding: "10px", backgroundColor: "#e0e0e0", color: "#333", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>← Quay lại</button>
+                <button disabled={!jsonPasteInput.trim()} onClick={handleSaveJson}
+                  style={{ flex: 2, padding: "10px", backgroundColor: jsonPasteInput.trim() ? "#4CAF50" : "#ccc", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: jsonPasteInput.trim() ? "pointer" : "not-allowed" }}>
+                  💾 Lưu vào Sổ Tay
+                </button>
+              </div>
+            </>
+          )}
+
+          <button onClick={() => setShowJsonModal(false)} style={{ width: "100%", marginTop: "12px", padding: "10px", backgroundColor: "#f5f5f5", color: "#666", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold" }}>✕ Đóng</button>
         </div>
       </div>
+    )}
 
-      {/* ===== MODAL JSON 3 BƯỚC ===== */}
-      {showJsonModal && (
-        <div onClick={() => setShowJsonModal(false)} style={{ position:"fixed", top:0, left:0, width:"100%", height:"100%", backgroundColor:"rgba(0,0,0,0.6)", zIndex:1200, display:"flex", justifyContent:"center", alignItems:"center", padding:"16px", boxSizing:"border-box" }}>
-          <div onClick={e => e.stopPropagation()} style={{ backgroundColor:"white", width:"100%", maxWidth:"440px", borderRadius:"16px", padding:"22px", animation:"popIn 0.3s", boxShadow:"0 10px 30px rgba(0,0,0,0.3)", maxHeight:"90vh", overflowY:"auto" }}>
-            <h3 style={{ margin:"0 0 6px 0", color:"#2c3e50" }}>📋 Nhập từ bằng AI ngoài</h3>
-            <p style={{ margin:"0 0 14px 0", fontSize:"13px", color:"#888" }}>Dùng khi API key hết quota</p>
-            <div style={{ display:"flex", gap:"6px", marginBottom:"18px" }}>
-              {[1,2,3].map(s => <div key={s} style={{ flex:1, height:"4px", borderRadius:"2px", backgroundColor: jsonModalStep>=s ? "#4CAF50":"#e0e0e0", transition:"0.3s" }} />)}
-            </div>
-            {jsonModalStep === 1 && (<>
-              <p style={{ fontWeight:"bold", color:"#333", marginBottom:"8px" }}>Bước 1: Nhập danh sách từ</p>
-              <textarea value={jsonWordsInput} onChange={e => setJsonWordsInput(e.target.value)} placeholder={"apply, absorb, accurate, achieve"} rows={4} style={{ width:"100%", padding:"10px", borderRadius:"8px", border:"1px solid #ccc", fontSize:"15px", boxSizing:"border-box", resize:"vertical", outline:"none", fontFamily:"inherit" }} />
-              <button disabled={!jsonWordsInput.trim()} onClick={() => { playSound("click"); setJsonModalStep(2); }} style={{ width:"100%", marginTop:"12px", padding:"12px", backgroundColor: jsonWordsInput.trim()?"#4CAF50":"#ccc", color:"white", border:"none", borderRadius:"8px", fontWeight:"bold", cursor: jsonWordsInput.trim()?"pointer":"not-allowed" }}>Tiếp theo →</button>
-            </>)}
-            {jsonModalStep === 2 && (<>
-              <p style={{ fontWeight:"bold", color:"#333", marginBottom:"8px" }}>Bước 2: Copy prompt → paste vào AI</p>
-              <textarea readOnly value={getPromptForWords(jsonWordsInput.trim(), activeTab)} rows={8} style={{ width:"100%", padding:"10px", borderRadius:"8px", border:"1px solid #90caf9", fontSize:"13px", boxSizing:"border-box", backgroundColor:"#f0f8ff", fontFamily:"monospace", resize:"none", outline:"none", color:"#1565c0" }} />
-              <button onClick={() => { navigator.clipboard.writeText(getPromptForWords(jsonWordsInput.trim(), activeTab)); playSound("click"); alert("✅ Đã copy! Mở ChatGPT/Gemini/Claude → paste → gửi → copy JSON về."); }} style={{ width:"100%", marginTop:"10px", padding:"12px", backgroundColor:"#2196F3", color:"white", border:"none", borderRadius:"8px", fontWeight:"bold", cursor:"pointer" }}>📋 Copy Prompt</button>
-              <div style={{ display:"flex", gap:"8px", marginTop:"8px" }}>
-                <button onClick={() => setJsonModalStep(1)} style={{ flex:1, padding:"10px", backgroundColor:"#e0e0e0", color:"#333", border:"none", borderRadius:"8px", fontWeight:"bold", cursor:"pointer" }}>← Quay lại</button>
-                <button onClick={() => { playSound("click"); setJsonModalStep(3); }} style={{ flex:2, padding:"10px", backgroundColor:"#FF9800", color:"white", border:"none", borderRadius:"8px", fontWeight:"bold", cursor:"pointer" }}>Đã có JSON →</button>
-              </div>
-            </>)}
-            {jsonModalStep === 3 && (<>
-              <p style={{ fontWeight:"bold", color:"#333", marginBottom:"8px" }}>Bước 3: Paste JSON từ AI vào đây</p>
-              <textarea value={jsonPasteInput} onChange={e => { setJsonPasteInput(e.target.value); setJsonSaveStatus(""); }} placeholder={'[\n  {"word": "apply (v)", "meaning": "áp dụng", ...}\n]'} rows={8} style={{ width:"100%", padding:"10px", borderRadius:"8px", border:"1px solid #ccc", fontSize:"13px", boxSizing:"border-box", fontFamily:"monospace", resize:"vertical", outline:"none" }} />
-              {jsonSaveStatus && <p style={{ margin:"8px 0 0 0", fontWeight:"bold", color: jsonSaveStatus.startsWith("✅")?"#4CAF50":"#f44336" }}>{jsonSaveStatus}</p>}
-              <div style={{ display:"flex", gap:"8px", marginTop:"10px" }}>
-                <button onClick={() => setJsonModalStep(2)} style={{ flex:1, padding:"10px", backgroundColor:"#e0e0e0", color:"#333", border:"none", borderRadius:"8px", fontWeight:"bold", cursor:"pointer" }}>← Quay lại</button>
-                <button disabled={!jsonPasteInput.trim()} onClick={handleSaveJson} style={{ flex:2, padding:"10px", backgroundColor: jsonPasteInput.trim()?"#4CAF50":"#ccc", color:"white", border:"none", borderRadius:"8px", fontWeight:"bold", cursor: jsonPasteInput.trim()?"pointer":"not-allowed" }}>💾 Lưu vào Sổ Tay</button>
-              </div>
-            </>)}
-            <button onClick={() => setShowJsonModal(false)} style={{ width:"100%", marginTop:"12px", padding:"10px", backgroundColor:"#f5f5f5", color:"#666", border:"none", borderRadius:"8px", cursor:"pointer", fontWeight:"bold" }}>✕ Đóng</button>
-          </div>
-        </div>
-      )}
+      <div style={{ animation: "popIn 0.3s ease-out" }}>
+        {renderListLogic(globalStats, activeTab, renderWordList)}
+      </div>
+      <button onClick={() => { onBack(); }} style={{ width:"100%", padding:"12px", marginTop:"10px", fontSize:"15px", backgroundColor:"white", color:"#666", borderRadius:"14px", border:"2px solid #e0e0e0", cursor:"pointer", fontWeight:"bold", fontFamily:"inherit" }}>← Trở về sảnh</button>
 
       {/* 1. OVERLAY MODAL: XEM TẤT CẢ (CÓ THANH CUỘN) - ĐÃ FIX REALTIME */}
       {viewAllModal && (
@@ -5054,7 +5135,6 @@ const handleRemoveManyWords = async (type, listType, wordsArray) => {
       <style>{`
         *, *::before, *::after { box-sizing:border-box; }
         html, body, #root { height:100%; overflow:hidden; margin:0; padding:0; }
-        ::-webkit-scrollbar { display: none; }
         @keyframes gradientMove { 0%{background-position:100% 0} 100%{background-position:-100% 0} }
         @keyframes heartbeat { 0%,100%{transform:scale(1)} 20%,60%{transform:scale(1.18)} }
         @keyframes fadeSlideUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
@@ -5071,7 +5151,6 @@ const handleRemoveManyWords = async (type, listType, wordsArray) => {
         button.next { background:linear-gradient(135deg,#1565c0,#1976d2) !important; color:white !important; border:none !important; border-radius:14px !important; padding:15px !important; font-size:17px !important; font-weight:bold !important; box-shadow:0 6px 18px rgba(21,101,192,0.3) !important; }
         .container { padding:16px; margin:0 auto; }
         html, body, #root { height: 100%; overflow: hidden; margin: 0; padding: 0; }
-        ::-webkit-scrollbar { display: none; }
         .home-layout { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
         @media (min-width: 900px) {
           .home-sidebar { width: 240px; flex-shrink: 0; background: linear-gradient(180deg,#1a237e 0%,#283593 60%,#1565c0 100%); padding: 20px 16px; display:flex; flex-direction:column; height: 100vh; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; }
