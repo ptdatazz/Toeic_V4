@@ -3072,25 +3072,22 @@ const formatExplanation = (explanation, correctAnswer = null, allOptions = null)
 
   // THAY BẰNG:
 return (
-  <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-start", minHeight: "100vh", position: "relative" }}>
-
+  <div style={{ position: "fixed", inset: 0, display: "grid", gridTemplateColumns: "1fr 2fr 1fr", gap: "12px", padding: "12px", background: "linear-gradient(135deg,#e3f2fd,#e8eaf6)", overflow: "hidden", fontFamily: "inherit" }}>
   {/* PANEL DỊCH TỪ BÊN PHẢI (CHỈ HIỆN TRÊN MÀN HÌNH RỘNG >= 900px) */}
   <div id="side-panel-dict" style={{
-      display: (window.innerWidth >= 900 || window.innerWidth > window.innerHeight) ? "flex" : "none",
-      flexDirection: "column",
-      position: "fixed",
-      top: "20px",
-      right: "calc(70% - 680px)",
-      width: "260px",
-      maxHeight: "calc(100vh - 40px)",
-      overflowY: "auto",
-      backgroundColor: "white",
-      borderRadius: "16px",
-      boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
-      border: "1px solid #e0e0e0",
-      padding: "20px",
-      zIndex: 100,
-  }}>
+    display: "flex",
+    flexDirection: "column",
+    backgroundColor: "white",
+    borderRadius: "16px",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+    border: "1px solid #e0e0e0",
+    padding: "16px",
+    overflowY: "auto",
+    gridColumn: "3",      // cột phải
+    gridRow: "1",
+    alignSelf: "start",
+    maxHeight: "calc(100vh - 24px)",
+}}>
       <div style={{ fontWeight: "bold", color: "#1565c0", fontSize: "15px", marginBottom: "15px", display: "flex", alignItems: "center", gap: "6px", borderBottom: "2px solid #e3f2fd", paddingBottom: "10px" }}>
           🔍 Tra từ nhanh
           <span style={{ fontSize: "11px", color: "#999", fontWeight: "normal", marginLeft: "auto" }}>Bôi đen từ để tra</span>
@@ -3157,9 +3154,43 @@ return (
               )}
           </>
       )}
-  </div>
 
-  <div id="grammar-quiz-content" className="container" style={{ maxWidth: TOEIC_PART !== "part5" ? "600px" : "450px", position: "relative", marginRight: window.innerWidth >= 900 ? "300px" : "0" }}>
+    </div>
+
+  {/* ========== CỘT 1: THẦY AI GIẢI THÍCH ========== */}
+  <div style={{
+    gridColumn: "1",
+    backgroundColor: "white",
+    borderRadius: "16px",
+    padding: "16px",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+    overflowY: "auto",
+    maxHeight: "calc(100vh - 24px)",
+    alignSelf: "start",
+    border: "1px solid #e0e0e0",
+  }}>
+    {selected && answerStatus ? (
+      <>
+        <div style={{ fontWeight: "bold", color: "#1565c0", fontSize: "15px", marginBottom: "15px", display: "flex", alignItems: "center", gap: "6px", borderBottom: "2px solid #e3f2fd", paddingBottom: "10px" }}>
+          🤖 Thầy AI Giải Thích
+        </div>
+        {selected !== "TIMEOUT" && selected !== currentQ.answer && (
+          <div style={{ marginBottom: "15px", fontSize: "15px", color: "#d32f2f", fontWeight: "bold" }}>
+            Đáp án đúng: <span style={{ textDecoration: "underline", color: "#2e7d32", padding: "2px 6px", backgroundColor: "#e8f5e9", borderRadius: "4px", userSelect: "text", WebkitUserSelect: "text" }}>{currentQ.answer}</span>
+          </div>
+        )}
+        <div style={{ cursor: "text", userSelect: "text", WebkitUserSelect: "text" }}>
+          {formatExplanation(currentQ.explanation, currentQ.answer, currentQ.options)}
+        </div>
+      </>
+    ) : (
+      <div style={{ textAlign: "center", color: "#bbb", fontSize: "14px", padding: "30px 0" }}>
+        <div style={{ fontSize: "36px", marginBottom: "10px" }}>🤖</div>
+        Chọn đáp án để Thầy AI giải thích
+      </div>
+    )}
+  </div>  
+  <div id="grammar-quiz-content" style={{ gridColumn: "2", display: "flex", flexDirection: "column", background: "white", borderRadius: "16px", boxShadow: "0 4px 20px rgba(0,0,0,0.08)", padding: "20px", overflowY: "auto", maxHeight: "calc(100vh - 24px)", position: "relative" }}>
 
       {/* --- THANH CÔNG CỤ XỬ LÝ CHỮ CỐ ĐỊNH Ở ĐÁY MÀN HÌNH (FIXED BOTTOM BAR) --- */}
       {selectedWord && tooltipPos && !dictModal && (
@@ -3254,7 +3285,7 @@ return (
       )}
 
       {/* THANH TRẠNG THÁI */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", height: "40px", marginBottom: "15px", gap: "10px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(135deg,#1565c0,#1e88e5)", borderRadius: "12px", padding: "8px 14px", marginBottom: "14px", gap: "10px" }}>
         <div style={{ flex: 1, display: "flex", justifyContent: "flex-start" }}>
           <button 
             onClick={() => { 
@@ -3301,12 +3332,13 @@ return (
         </div>
       </div>
 
-      {DIFFICULTY_LEVEL < 4 && !IS_FREE_MODE && <div style={{ width: "100%", height: "8px", backgroundColor: "#e0e0e0", borderRadius: "4px", overflow: "hidden", marginBottom: "20px" }}>
-        <div style={{ height: "100%", width: `${timePercentage}%`, backgroundColor: timeLeft <= 3 ? "#f44336" : "#2196F3", transition: "width 1s linear" }} />
+      {DIFFICULTY_LEVEL < 4 && !IS_FREE_MODE && 
+      <div style={{ width: "100%", height: "4px", backgroundColor: "rgba(0,0,0,0.08)", borderRadius: "2px", overflow: "hidden", marginBottom: "16px" }}>
+      <div style={{ height: "100%", width: `${timePercentage}%`, background: timeLeft <= 3 ? "#ef5350" : "#42a5f5", transition: "width 1s linear" }} />        <div style={{ height: "100%", width: `${timePercentage}%`, backgroundColor: timeLeft <= 3 ? "#f44336" : "#2196F3", transition: "width 1s linear" }} />
       </div>}
 
       {currentQ.passage && currentQ.passage.trim() !== "" && currentQ.passage.trim() !== currentQ.question?.trim() && (
-        <div style={{ backgroundColor: "#fdfdfd", border: "1px solid #d0d7de", borderRadius: "8px", marginBottom: "20px", overflow: "hidden" }}>
+        <div style={{ backgroundColor: "#fafafa", border: "1px solid #e0e0e0", borderRadius: "12px", marginBottom: "16px", overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
           {currentQ.doc_type && (
             <div style={{ backgroundColor: "#e3f2fd", padding: "6px 15px", borderBottom: "1px solid #d0d7de", fontSize: "12px", fontWeight: "bold", color: "#1565c0", textTransform: "uppercase", letterSpacing: "0.5px" }}>
               📄 {currentQ.doc_type}
@@ -3339,45 +3371,7 @@ return (
           <div className={`feedback-box ${comboClass}`}>
             {answerStatus.text}
           </div>
-
-          <div style={{ marginTop: "20px", textAlign: "left", backgroundColor: "#f0f8ff", padding: "20px", borderRadius: "12px", border: "2px solid #90caf9", position: "relative", cursor: "text", userSelect: "text", WebkitUserSelect: "text" }}>
-            <div style={{ position: "absolute", top: "-15px", left: "15px", backgroundColor: "#2196F3", color: "white", padding: "5px 15px", borderRadius: "20px", fontSize: "14px", fontWeight: "bold", boxShadow: "0 2px 5px rgba(0,0,0,0.2)", display: "flex", alignItems: "center", gap: "5px", userSelect: "none" }}>
-              <span>🤖</span> Thầy AI Giải Thích
-            </div>
-            
-            {selected !== "TIMEOUT" && selected !== currentQ.answer && (
-             <div style={{ marginTop: "10px", marginBottom: "15px", fontSize: "16px", color: "#d32f2f", fontWeight: "bold", userSelect: "none" }}>
-               Đáp án đúng: <span style={{ textDecoration: "underline", color: "#2e7d32", padding: "2px 6px", backgroundColor: "#e8f5e9", borderRadius: "4px", userSelect: "text", WebkitUserSelect: "text" }}>{currentQ.answer}</span>
-             </div>
-            )}
-
-            <div style={{ marginTop: "15px", cursor: "text", userSelect: "text", WebkitUserSelect: "text" }}>
-              {formatExplanation(currentQ.explanation, currentQ.answer, currentQ.options)}
-            </div>
-          </div>
-
-          {/* Dải đệm tàng hình */}
-          <div style={{ height: "90px", width: "100%" }}></div>
-
-          <button 
-            className="next" 
-            onClick={nextQuestion} 
-            style={{ 
-              position: "fixed", 
-              bottom: "30px", 
-              left: "50%", 
-              transform: "translateX(-50%)", 
-              width: "calc(100% - 40px)", 
-              maxWidth: "400px", 
-              padding: "16px", 
-              fontSize: "18px", 
-              fontWeight: "bold", 
-              borderRadius: "16px", 
-              boxShadow: "0 10px 25px rgba(0,0,0,0.25)", 
-              zIndex: 999, 
-              border: "3px solid white"
-            }}
-          >
+          <button className="next" onClick={nextQuestion} style={{ width: "100%", padding: "14px", fontSize: "16px", fontWeight: "bold", borderRadius: "12px", marginTop: "16px", border: "none", cursor: "pointer" }}>
             Câu tiếp theo ➡️
           </button>
         </>
@@ -4573,26 +4567,6 @@ function App() {
         const collocRows = await fetchSheetRows("Collocation");
         setTotalCollocDbWords(collocRows);
         localStorage.setItem("toeic_total_colloc_db_words", collocRows);
-
-        // try {
-        //     // Đã fix lỗi gọi hàm không tồn tại, dùng fetch trực tiếp
-        //     const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&headers=1&sheet=Custom`;
-        //     const customRes = await fetch(url);
-        //     const customText = await customRes.text();
-        //     const customJsonString = customText.substring(customText.indexOf('{'), customText.lastIndexOf('}') + 1);
-        //     const customData = JSON.parse(customJsonString);
-            
-        //     const headers = customData.table.cols.map(col => col.label);
-        //     const wordColIdx = headers.findIndex(h => h && h.toLowerCase() === 'word');
-        //     const idx = wordColIdx !== -1 ? wordColIdx : 0;
-            
-        //     const customWordsArr = customData.table.rows.map(row => (row.c[idx] && row.c[idx].v) ? row.c[idx].v.toString() : "").filter(w => w !== "");
-        //     setCustomSheetWords(customWordsArr);
-        //     localStorage.setItem("toeic_custom_words", JSON.stringify(customWordsArr));
-        // } catch (e) {
-        //     console.log("Sheet Custom có thể đang trống");
-        // }
-
       } catch (e) {
         console.error("Lỗi đếm tổng số từ:", e);
       }
